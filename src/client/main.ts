@@ -1,6 +1,8 @@
 // Herald client-side JavaScript
 // EasyMDE initialization, form handlers, flash messages, delete confirmation
 
+import './styles/main.css';
+
 document.addEventListener('DOMContentLoaded', () => {
   initEasyMDE();
   initSummaryEasyMDE();

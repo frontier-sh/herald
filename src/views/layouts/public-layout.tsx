@@ -1,4 +1,5 @@
 import type { FC } from 'hono/jsx';
+import { ClientHead, ClientBody } from '../components/client-assets';
 
 interface PublicLayoutProps {
   children: any;
@@ -41,7 +42,7 @@ export const PublicLayout: FC<PublicLayoutProps> = ({
           rel="stylesheet"
         />
         <link rel="alternate" type="application/rss+xml" title={`${displayName} RSS Feed`} href="/feed.xml" />
-        <link rel="stylesheet" href="/assets/main.css" />
+        <ClientHead />
       </head>
       <body class="public-body">
         <div class="public-layout">
@@ -68,7 +69,7 @@ export const PublicLayout: FC<PublicLayoutProps> = ({
             </div>
           </footer>
         </div>
-        <script src="/assets/main.js" defer></script>
+        <ClientBody />
       </body>
     </html>
   );

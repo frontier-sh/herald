@@ -1,4 +1,5 @@
 import type { FC } from 'hono/jsx';
+import { ClientHead } from '../components/client-assets';
 
 interface AdminLoginProps {
   error?: string;
@@ -24,7 +25,7 @@ export const AdminLogin: FC<AdminLoginProps> = ({ error }) => {
           href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@400;600;700&display=swap"
           rel="stylesheet"
         />
-        <link rel="stylesheet" href="/assets/main.css" />
+        <ClientHead />
       </head>
       <body class="login-body">
         <div class="login-container">
