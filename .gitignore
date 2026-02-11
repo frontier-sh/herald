@@ -107,6 +107,12 @@ dist
 # Docusaurus cache and generated files
 .docusaurus
 
+# Wrangler local state
+.wrangler/
+
+# Dev vars (secrets)
+.dev.vars
+
 # Serverless directories
 .serverless/
 
