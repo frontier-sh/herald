@@ -1,0 +1,94 @@
+name: 'Herald Changelog'
+description: 'Send changelog entries to your Herald instance'
+branding:
+  icon: 'book-open'
+  color: 'blue'
+
+inputs:
+  herald-url:
+    description: 'URL of your Herald instance (e.g., https://herald.example.com)'
+    required: true
+  api-key:
+    description: 'Herald API key'
+    required: true
+  category:
+    description: 'Entry category (added, changed, fixed, removed, deprecated, security)'
+    required: false
+    default: 'changed'
+  title:
+    description: 'Entry title (defaults to commit message or release title)'
+    required: false
+  content:
+    description: 'Entry content in Markdown (defaults to commit messages or release body)'
+    required: false
+  version:
+    description: 'Version tag (defaults to release tag if available)'
+    required: false
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Send to Herald
+      shell: bash
+      env:
+        HERALD_URL: ${{ inputs.herald-url }}
+        HERALD_API_KEY: ${{ inputs.api-key }}
+        HERALD_CATEGORY: ${{ inputs.category }}
+        HERALD_TITLE: ${{ inputs.title }}
+        HERALD_CONTENT: ${{ inputs.content }}
+        HERALD_VERSION: ${{ inputs.version }}
+        EVENT_NAME: ${{ github.event_name }}
+        RELEASE_NAME: ${{ github.event.release.name }}
+        RELEASE_BODY: ${{ github.event.release.body }}
+        RELEASE_TAG: ${{ github.event.release.tag_name }}
+        EVENT_BEFORE: ${{ github.event.before }}
+        EVENT_AFTER: ${{ github.event.after }}
+      run: |
+        # Determine content based on event type
+        if [ "$EVENT_NAME" = "release" ]; then
+          # For release events
+          TITLE="${HERALD_TITLE:-$RELEASE_NAME}"
+          CONTENT="${HERALD_CONTENT:-$RELEASE_BODY}"
+          VERSION="${HERALD_VERSION:-$RELEASE_TAG}"
+        else
+          # For push events - collect commit messages
+          TITLE="${HERALD_TITLE:-$(git log --format='%s' -1)}"
+          if [ -z "$HERALD_CONTENT" ]; then
+            CONTENT=$(git log --format='- %s' "${EVENT_BEFORE}".."${EVENT_AFTER}" 2>/dev/null || git log --format='- %s' -1)
+          else
+            CONTENT="$HERALD_CONTENT"
+          fi
+          VERSION="${HERALD_VERSION:-}"
+        fi
+
+        # Fallback for empty title
+        if [ -z "$TITLE" ]; then
+          TITLE="Changelog update"
+        fi
+
+        # Build JSON payload using jq for proper escaping
+        JSON=$(jq -n \
+          --arg title "$TITLE" \
+          --arg content "$CONTENT" \
+          --arg category "$HERALD_CATEGORY" \
+          --arg version "$VERSION" \
+          '{entries: [{title: $title, content: $content, category: $category, version: $version}]}')
+
+        # Send to Herald webhook
+        RESPONSE=$(curl -s -w "\n%{http_code}" \
+          -X POST "${HERALD_URL}/api/webhook" \
+          -H "Authorization: Bearer ${HERALD_API_KEY}" \
+          -H "Content-Type: application/json" \
+          -d "$JSON")
+
+        HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+        BODY=$(echo "$RESPONSE" | head -n -1)
+
+        if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+          echo "Successfully sent changelog entry to Herald"
+          echo "$BODY" | jq . 2>/dev/null || echo "$BODY"
+        else
+          echo "Failed to send to Herald (HTTP $HTTP_CODE)"
+          echo "$BODY"
+          exit 1
+        fi

@@ -1,0 +1,44 @@
+{
+  "name": "herald",
+  "compatibility_date": "2025-01-01",
+  "main": "./dist/index.js",
+
+  // D1 Database
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "herald-db",
+      "database_id": "",
+      "migrations_dir": "migrations"
+    }
+  ],
+
+  // Workers AI
+  "ai": {
+    "binding": "AI"
+  },
+
+  // Queue producer
+  "queues": {
+    "producers": [
+      {
+        "binding": "CHANGELOG_QUEUE",
+        "queue": "herald-queue"
+      }
+    ],
+    "consumers": [
+      {
+        "queue": "herald-queue",
+        "max_batch_size": 1
+      }
+    ]
+  },
+
+  // Static assets
+  "assets": {
+    "directory": "./dist/assets"
+  },
+
+  // Environment variables (set via wrangler secret or .dev.vars)
+  "vars": {}
+}
