@@ -2,10 +2,12 @@ import { defineConfig } from 'vite';
 import build from '@hono/vite-build/cloudflare-workers';
 import devServer from '@hono/vite-dev-server';
 import cloudflareAdapter from '@hono/vite-dev-server/cloudflare';
+import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig(async ({ mode }) => {
   if (mode === 'client') {
     return {
+      plugins: [tailwindcss()],
       build: {
         outDir: './dist/assets',
         rollupOptions: {
@@ -22,6 +24,7 @@ export default defineConfig(async ({ mode }) => {
   }
   return {
     plugins: [
+      tailwindcss(),
       build({
         entry: './src/index.ts',
       }),
