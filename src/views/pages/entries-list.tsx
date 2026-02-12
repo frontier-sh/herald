@@ -48,7 +48,7 @@ export const EntriesList: FC<EntriesListProps> = ({
       </div>
 
       {entries.length > 0 ? (
-        <div class="entries-list">
+        <div class="entries-list" data-stagger>
           {entries.map((entry) => (
             <EntryCard entry={entry} />
           ))}
