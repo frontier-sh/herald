@@ -88,7 +88,6 @@
   --transition-fast: 120ms ease;
   --transition-base: 200ms ease;
   --transition-slow: 300ms ease-out;
-  --transition-spring: 300ms cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 /* ============================================
@@ -121,72 +120,12 @@ a:hover {
 /* ============================================
    Animations
    ============================================ */
-@keyframes fade-in-up {
-  from {
-    opacity: 0;
-    transform: translateY(12px);
-  }
-  to {
+@keyframes ai-pulse {
+  0%, 100% {
     opacity: 1;
-    transform: translateY(0);
   }
-}
-
-@keyframes fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-@keyframes scale-in {
-  from {
-    opacity: 0;
-    transform: scale(0.96);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-@keyframes slide-in-left {
-  from {
-    opacity: 0;
-    transform: translateX(-8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-.animate-in {
-  animation: fade-in-up 0.5s ease-out both;
-}
-
-.animate-scale-in {
-  animation: scale-in 0.4s ease-out both;
-}
-
-[data-stagger] > * {
-  animation: fade-in-up 0.45s ease-out both;
-}
-
-[data-stagger] > *:nth-child(1) { animation-delay: 0ms; }
-[data-stagger] > *:nth-child(2) { animation-delay: 50ms; }
-[data-stagger] > *:nth-child(3) { animation-delay: 100ms; }
-[data-stagger] > *:nth-child(4) { animation-delay: 150ms; }
-[data-stagger] > *:nth-child(5) { animation-delay: 200ms; }
-[data-stagger] > *:nth-child(6) { animation-delay: 250ms; }
-[data-stagger] > *:nth-child(7) { animation-delay: 300ms; }
-[data-stagger] > *:nth-child(8) { animation-delay: 350ms; }
-[data-stagger] > *:nth-child(9) { animation-delay: 400ms; }
-[data-stagger] > *:nth-child(10) { animation-delay: 450ms; }
-
-@media (prefers-reduced-motion: reduce) {
-  .animate-in,
-  .animate-scale-in,
-  [data-stagger] > * {
-    animation: none !important;
+  50% {
+    opacity: 0.6;
   }
 }
 
@@ -363,7 +302,6 @@ pre code {
   margin-bottom: var(--space-8);
   padding-bottom: var(--space-6);
   border-bottom: 1px solid var(--color-border);
-  animation: fade-in-up 0.4s ease-out both;
 }
 
 .page-header h1 {
@@ -386,7 +324,7 @@ pre code {
   border: 1px solid transparent;
   border-radius: var(--radius-md);
   cursor: pointer;
-  transition: background-color var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast), opacity var(--transition-fast);
+  transition: background-color var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
   text-decoration: none;
   white-space: nowrap;
 }
@@ -440,11 +378,6 @@ pre code {
   color: var(--color-text);
 }
 
-.btn:active:not(:disabled) {
-  transform: scale(0.97);
-  transition-duration: 80ms;
-}
-
 .btn-sm {
   padding: var(--space-1) var(--space-3);
   font-size: var(--text-xs);
@@ -464,12 +397,11 @@ pre code {
   border-radius: var(--radius-lg);
   padding: var(--space-6);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-  transition: box-shadow var(--transition-fast), transform var(--transition-fast);
+  transition: box-shadow var(--transition-fast);
 }
 
 .card:hover {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
-  transform: translateY(-1px);
 }
 
 .card-header {
@@ -925,7 +857,6 @@ tbody tr:hover {
   border-radius: var(--radius-xl);
   padding: var(--space-8);
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.04), 0 20px 40px -8px rgba(0, 0, 0, 0.06);
-  animation: scale-in 0.5s ease-out both;
 }
 
 .login-header {
@@ -967,8 +898,6 @@ tbody tr:hover {
   border-radius: var(--radius-md);
   font-size: var(--text-sm);
   margin-bottom: var(--space-6);
-  transition: opacity var(--transition-slow), transform var(--transition-slow);
-  animation: fade-in-up 0.4s ease-out both;
 }
 
 .flash-success {
@@ -1003,7 +932,6 @@ tbody tr:hover {
   margin-left: var(--space-3);
   line-height: 1;
   opacity: 0.7;
-  transition: opacity var(--transition-fast);
 }
 
 .flash-message-close:hover {
@@ -1027,11 +955,10 @@ tbody tr:hover {
   padding: var(--space-6);
   text-align: center;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+  transition: box-shadow var(--transition-fast);
 }
 
 .stat-card:hover {
-  transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
 }
 
@@ -1096,7 +1023,7 @@ tbody tr:hover {
   color: var(--color-text);
   font-size: var(--text-sm);
   font-weight: 500;
-  transition: border-color var(--transition-fast), color var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast);
+  transition: border-color var(--transition-fast), color var(--transition-fast), box-shadow var(--transition-fast);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 
@@ -1104,7 +1031,6 @@ tbody tr:hover {
   border-color: var(--color-primary);
   color: var(--color-primary);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
-  transform: translateY(-2px);
 }
 
 .quick-action-icon {
@@ -1160,7 +1086,7 @@ tbody tr:hover {
   padding: var(--space-4) var(--space-6);
   text-decoration: none;
   color: var(--color-text);
-  transition: border-color var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 
@@ -1168,7 +1094,6 @@ tbody tr:hover {
   border-color: var(--color-primary);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
   color: var(--color-text);
-  transform: translateY(-1px);
 }
 
 .entry-card-header {
@@ -1298,7 +1223,6 @@ tbody tr:hover {
   height: 1.125rem;
   flex-shrink: 0;
   opacity: 0.6;
-  transition: opacity var(--transition-fast);
 }
 
 .sidebar-nav a:hover .nav-icon,
@@ -1698,7 +1622,7 @@ tbody tr:hover {
   padding: var(--space-4) var(--space-6);
   text-decoration: none;
   color: var(--color-text);
-  transition: border-color var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 
@@ -1706,7 +1630,6 @@ tbody tr:hover {
   border-color: var(--color-primary);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
   color: var(--color-text);
-  transform: translateY(-1px);
 }
 
 .release-card-header {
@@ -1991,7 +1914,6 @@ tbody tr:hover {
   margin-bottom: var(--space-4);
   line-height: 1.05;
   letter-spacing: -0.035em;
-  animation: fade-in-up 0.6s ease-out both;
 }
 
 .changelog-subtitle {
@@ -2000,7 +1922,6 @@ tbody tr:hover {
   max-width: 520px;
   margin: 0 auto;
   line-height: 1.6;
-  animation: fade-in-up 0.6s ease-out 0.12s both;
 }
 
 /* ============================================
@@ -2012,7 +1933,6 @@ tbody tr:hover {
   gap: var(--space-2);
   justify-content: center;
   margin-bottom: var(--space-10);
-  animation: fade-in-up 0.5s ease-out 0.25s both;
 }
 
 .category-pill {
@@ -2027,13 +1947,12 @@ tbody tr:hover {
   background-color: #FFFFFF;
   color: var(--color-text-secondary);
   cursor: pointer;
-  transition: border-color var(--transition-fast), background-color var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
+  transition: border-color var(--transition-fast), background-color var(--transition-fast), color var(--transition-fast);
 }
 
 .category-pill:hover {
   border-color: var(--color-border-hover);
   background-color: var(--color-bg);
-  transform: translateY(-1px);
 }
 
 .category-pill.active {
@@ -2063,14 +1982,7 @@ tbody tr:hover {
 .changelog-timeline .timeline-item {
   position: relative;
   margin-bottom: var(--space-16);
-  animation: fade-in-up 0.5s ease-out both;
 }
-
-.changelog-timeline .timeline-item:nth-child(1) { animation-delay: 0.3s; }
-.changelog-timeline .timeline-item:nth-child(2) { animation-delay: 0.4s; }
-.changelog-timeline .timeline-item:nth-child(3) { animation-delay: 0.5s; }
-.changelog-timeline .timeline-item:nth-child(4) { animation-delay: 0.6s; }
-.changelog-timeline .timeline-item:nth-child(5) { animation-delay: 0.7s; }
 
 .changelog-timeline .timeline-item::before {
   display: none;
@@ -2319,15 +2231,6 @@ tbody tr:hover {
   border: 1px solid var(--color-danger);
 }
 
-@keyframes ai-pulse {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.6;
-  }
-}
-
 /* ============================================
    AI Regenerate Button
    ============================================ */
@@ -2381,7 +2284,6 @@ tbody tr:hover {
   border-left: 5px solid var(--color-text-muted);
   border-top: 4px solid transparent;
   border-bottom: 4px solid transparent;
-  transition: transform var(--transition-fast);
 }
 
 .ai-original-content[open] .ai-original-content-toggle::before {
