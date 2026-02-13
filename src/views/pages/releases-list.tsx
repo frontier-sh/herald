@@ -34,7 +34,7 @@ export const ReleasesList: FC<ReleasesListProps> = ({
       </div>
 
       {releases.length > 0 ? (
-        <div class="releases-list" data-stagger>
+        <div class="releases-list">
           {releases.map((release) => (
             <ReleaseCard release={release} />
           ))}

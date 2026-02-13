@@ -24,7 +24,7 @@ export const Dashboard: FC<DashboardProps> = ({
         </a>
       </div>
 
-      <div class="stats-grid" data-stagger>
+      <div class="stats-grid">
         <div class="stat-card">
           <div class="stat-number">{totalEntries}</div>
           <div class="stat-label">Total Entries</div>
@@ -47,7 +47,7 @@ export const Dashboard: FC<DashboardProps> = ({
           </a>
         </div>
         {recentEntries.length > 0 ? (
-          <div class="entries-list" data-stagger>
+          <div class="entries-list">
             {recentEntries.map((entry) => (
               <EntryCard entry={entry} />
             ))}
@@ -65,7 +65,7 @@ export const Dashboard: FC<DashboardProps> = ({
 
       <div class="dashboard-section">
         <h2>Quick Actions</h2>
-        <div class="quick-actions" data-stagger>
+        <div class="quick-actions">
           <a href="/admin/entries/new" class="quick-action-card">
             <span class="quick-action-icon">+</span>
             <span>New Entry</span>
