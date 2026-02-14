@@ -343,6 +343,7 @@ pre code {
 .btn-primary:hover:not(:disabled) {
   background-color: var(--color-primary-hover);
   border-color: var(--color-primary-hover);
+  color: #FFFFFF;
 }
 
 .btn-secondary {
@@ -365,6 +366,7 @@ pre code {
 .btn-danger:hover:not(:disabled) {
   background-color: #B91C1C;
   border-color: #B91C1C;
+  color: #FFFFFF;
 }
 
 .btn-ghost {
