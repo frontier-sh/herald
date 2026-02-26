@@ -2,7 +2,6 @@ import { Hono } from 'hono';
 import type { Bindings } from '../bindings';
 import { adminAuth } from '../middleware/auth';
 import { setFlash, getFlash } from '../middleware/flash';
-import { setCookie } from 'hono/cookie';
 import {
   listEntries,
   getEntry,
@@ -34,7 +33,10 @@ import { ReleasesList } from '../views/pages/releases-list';
 import { ReleaseEdit } from '../views/pages/release-edit';
 import { SettingsPage } from '../views/pages/settings-page';
 
-const admin = new Hono<{ Bindings: Bindings }>();
+const admin = new Hono<{
+  Bindings: Bindings;
+  Variables: { githubUser: string };
+}>();
 
 // Apply admin auth middleware to all admin routes
 // The middleware itself excludes /admin/login
@@ -56,46 +58,9 @@ admin.use('/*', async (c, next) => {
 // ─── Login ───────────────────────────────────────────────
 
 admin.get('/login', (c) => {
-  return c.html(<AdminLogin />);
-});
-
-admin.post('/login', async (c) => {
-  const body = await c.req.parseBody();
-  const password = body['password'];
-
-  if (typeof password !== 'string' || password !== c.env.ADMIN_PASSWORD) {
-    return c.html(<AdminLogin error="Invalid password. Please try again." />, 401);
-  }
-
-  // Create signed session value
-  const sessionValue = 'authenticated';
-  const encoder = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    'raw',
-    encoder.encode(c.env.ADMIN_PASSWORD),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign'],
-  );
-  const signature = await crypto.subtle.sign(
-    'HMAC',
-    key,
-    encoder.encode(sessionValue),
-  );
-  const sig = Array.from(new Uint8Array(signature))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
-  const cookieValue = `${sessionValue}.${sig}`;
-
-  setCookie(c, 'herald_session', cookieValue, {
-    httpOnly: true,
-    secure: true,
-    sameSite: 'Lax',
-    path: '/admin',
-    maxAge: 60 * 60 * 24 * 7, // 7 days
-  });
-
-  return c.redirect('/admin');
+  const error = c.req.query('error') || undefined;
+  const repo = c.req.query('repo') || c.env.GITHUB_ALLOWED_REPO;
+  return c.html(<AdminLogin error={error} repo={repo} />);
 });
 
 // ─── Dashboard ───────────────────────────────────────────
@@ -108,7 +73,7 @@ admin.get('/', async (c) => {
   const recentEntries = allEntries.slice(0, 10);
 
   return c.html(
-    <AdminLayout title="Dashboard" currentPath="/admin" flash={flash}>
+    <AdminLayout title="Dashboard" currentPath="/admin" flash={flash} githubUser={c.get('githubUser')}>
       <Dashboard
         totalEntries={allEntries.length}
         publishedCount={publishedEntries.length}
@@ -133,7 +98,7 @@ admin.get('/entries', async (c) => {
   const entries = await listEntries(c.env.DB, filters);
 
   return c.html(
-    <AdminLayout title="Entries" currentPath="/admin/entries" flash={flash}>
+    <AdminLayout title="Entries" currentPath="/admin/entries" flash={flash} githubUser={c.get('githubUser')}>
       <EntriesList
         entries={entries}
         statusFilter={statusFilter}
@@ -148,7 +113,7 @@ admin.get('/entries', async (c) => {
 admin.get('/entries/new', (c) => {
   const flash = getFlash(c);
   return c.html(
-    <AdminLayout title="New Entry" currentPath="/admin/entries" flash={flash}>
+    <AdminLayout title="New Entry" currentPath="/admin/entries" flash={flash} githubUser={c.get('githubUser')}>
       <EntryEdit />
     </AdminLayout>,
   );
@@ -217,7 +182,7 @@ admin.get('/entries/:id', async (c) => {
   }
 
   return c.html(
-    <AdminLayout title={`Edit: ${entry.title}`} currentPath="/admin/entries" flash={flash}>
+    <AdminLayout title={`Edit: ${entry.title}`} currentPath="/admin/entries" flash={flash} githubUser={c.get('githubUser')}>
       <EntryEdit entry={entry} />
     </AdminLayout>,
   );
@@ -383,7 +348,7 @@ admin.get('/releases', async (c) => {
   const releases = await listReleases(c.env.DB, filters);
 
   return c.html(
-    <AdminLayout title="Releases" currentPath="/admin/releases" flash={flash}>
+    <AdminLayout title="Releases" currentPath="/admin/releases" flash={flash} githubUser={c.get('githubUser')}>
       <ReleasesList releases={releases} statusFilter={statusFilter} />
     </AdminLayout>,
   );
@@ -397,7 +362,7 @@ admin.get('/releases/new', async (c) => {
   const availableEntries = await listEntries(c.env.DB);
 
   return c.html(
-    <AdminLayout title="New Release" currentPath="/admin/releases" flash={flash}>
+    <AdminLayout title="New Release" currentPath="/admin/releases" flash={flash} githubUser={c.get('githubUser')}>
       <ReleaseEdit availableEntries={availableEntries} />
     </AdminLayout>,
   );
@@ -475,7 +440,7 @@ admin.get('/releases/:id', async (c) => {
   const availableEntries = await listEntries(c.env.DB);
 
   return c.html(
-    <AdminLayout title={`Edit: ${release.version}`} currentPath="/admin/releases" flash={flash}>
+    <AdminLayout title={`Edit: ${release.version}`} currentPath="/admin/releases" flash={flash} githubUser={c.get('githubUser')}>
       <ReleaseEdit release={release} availableEntries={availableEntries} />
     </AdminLayout>,
   );
@@ -599,7 +564,7 @@ admin.get('/settings', async (c) => {
   const newKey = c.req.query('newKey') || null;
 
   return c.html(
-    <AdminLayout title="Settings" currentPath="/admin/settings" flash={flash}>
+    <AdminLayout title="Settings" currentPath="/admin/settings" flash={flash} githubUser={c.get('githubUser')}>
       <SettingsPage settings={settings} apiKeys={apiKeys} newKey={newKey} />
     </AdminLayout>,
   );

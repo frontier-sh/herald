@@ -1,6 +1,5 @@
 import type { Context } from 'hono';
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
-import type { Bindings } from '../bindings';
 
 export interface FlashMessage {
   type: 'success' | 'error' | 'warning';
@@ -11,7 +10,7 @@ export interface FlashMessage {
  * Set a flash message cookie. The message will be available on the next request.
  */
 export function setFlash(
-  c: Context<{ Bindings: Bindings }>,
+  c: Context<any>,
   type: FlashMessage['type'],
   message: string,
 ): void {
@@ -29,7 +28,7 @@ export function setFlash(
  * Read and delete the flash message cookie. Returns null if no flash exists.
  */
 export function getFlash(
-  c: Context<{ Bindings: Bindings }>,
+  c: Context<any>,
 ): FlashMessage | null {
   const raw = getCookie(c, 'herald_flash');
   if (!raw) return null;

@@ -881,12 +881,83 @@ tbody tr:hover {
   margin-bottom: 0;
 }
 
-.login-form .form-group {
-  margin-bottom: var(--space-6);
-}
-
 .login-btn {
   width: 100%;
+  text-decoration: none;
+  text-align: center;
+}
+
+.login-github-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.login-info {
+  text-align: center;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  margin-top: var(--space-4);
+}
+
+.login-info code {
+  background: var(--color-bg);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+}
+
+.setup-text {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-3);
+  line-height: 1.5;
+}
+
+.setup-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 var(--space-4) 0;
+}
+
+.setup-list li {
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-bg);
+  border-radius: var(--radius-sm);
+  margin-bottom: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.setup-list li code {
+  color: var(--color-danger);
+  font-weight: 500;
+}
+
+.setup-instructions {
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--space-4);
+  margin-top: var(--space-2);
+}
+
+.setup-code {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  font-size: var(--text-xs);
+  overflow-x: auto;
+  margin-bottom: var(--space-3);
+  white-space: pre;
+  line-height: 1.6;
+}
+
+.setup-link {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+.setup-link:hover {
+  text-decoration: underline;
 }
 
 /* ============================================
@@ -1215,6 +1286,31 @@ tbody tr:hover {
 
 .sidebar-footer-link:hover {
   color: #FFFFFF;
+}
+
+.sidebar-user {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.sidebar-username {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-logout-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  font-family: inherit;
 }
 
 /* ============================================
