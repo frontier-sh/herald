@@ -1,5 +1,6 @@
 import type { Bindings } from '../bindings';
 import { summarizeContent } from '../services/ai';
+import { purgePublicCache } from '../services/cache';
 
 interface QueueMessage {
   type: 'summarize';
@@ -52,6 +53,11 @@ export async function handleQueue(
       await env.DB.prepare(
         'UPDATE entries SET content = ?, ai_status = ?, updated_at = datetime(?) WHERE id = ?',
       ).bind(summary, 'completed', new Date().toISOString(), entryId).run();
+
+      // Purge cached public pages so the new content is visible
+      if (env.BASE_URL) {
+        await purgePublicCache(env.BASE_URL);
+      }
 
       message.ack();
     } catch (error) {

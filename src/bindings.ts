@@ -3,4 +3,5 @@ export type Bindings = {
   AI: Ai;
   CHANGELOG_QUEUE: Queue;
   ADMIN_PASSWORD: string;
+  BASE_URL: string;
 };
