@@ -9,6 +9,7 @@ interface AdminLayoutProps {
   title?: string;
   currentPath?: string;
   flash?: FlashMessage | null;
+  githubUser?: string;
 }
 
 export const AdminLayout: FC<AdminLayoutProps> = ({
@@ -16,6 +17,7 @@ export const AdminLayout: FC<AdminLayoutProps> = ({
   title,
   currentPath,
   flash,
+  githubUser,
 }) => {
   const pageTitle = title ? `${title} - Herald Admin` : 'Herald Admin';
 
@@ -46,7 +48,7 @@ export const AdminLayout: FC<AdminLayoutProps> = ({
       </head>
       <body>
         <div class="layout">
-          <Sidebar currentPath={currentPath} />
+          <Sidebar currentPath={currentPath} githubUser={githubUser} />
           <main class="main-content">
             <div class="content-container">
               {flash && (

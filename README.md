@@ -15,7 +15,7 @@ A self-hosted changelog solution that makes it easy to track, manage, and publis
 - REST API + GitHub Action for CI/CD automation
 - RSS feed for subscribers
 - Public changelog page for your users
-- Simple admin authentication
+- GitHub OAuth admin authentication (scoped to repo collaborators)
 - Runs on Cloudflare Workers -- fast, global, free tier friendly
 
 ## Quick Start
@@ -24,33 +24,53 @@ A self-hosted changelog solution that makes it easy to track, manage, and publis
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/frontier-sh/herald)
 
-After deploying:
-
-1. Set your `ADMIN_PASSWORD` secret in **Workers & Pages > herald > Settings > Variables**
-2. Visit `/admin` to log in
-3. Create your first changelog entry
+After deploying, you'll need to set up GitHub OAuth -- see [Authentication](#authentication) below.
 
 ### Local Development
 
 ```bash
-# Clone the repository
 git clone https://github.com/frontier-sh/herald.git
 cd herald
-
-# Install dependencies
 npm install
-
-# Create your environment file
 cp .dev.vars.example .dev.vars
-
-# Run database migrations locally
 npm run db:migrate:local
-
-# Start the dev server
 npm run dev
 ```
 
 The app will be available at `http://localhost:5173`.
+
+For local development, create a separate GitHub OAuth App with the callback URL set to `http://localhost:5173/auth/github/callback`, and fill in your `.dev.vars` file.
+
+## Authentication
+
+Herald uses GitHub OAuth to control access to the admin panel. Only users who have access to a specific GitHub repository can sign in. Each deployment is independent -- your OAuth App and repo gate are yours alone.
+
+### Setup
+
+1. Go to [github.com/settings/developers](https://github.com/settings/developers) and click **New OAuth App**.
+2. Fill in the form:
+   - **Application name**: Herald (or any name you like)
+   - **Homepage URL**: `https://your-worker.workers.dev`
+   - **Authorization callback URL**: `https://your-worker.workers.dev/auth/github/callback`
+3. Click **Register application**, then generate a client secret.
+4. Set the three secrets in Cloudflare:
+
+```bash
+wrangler secret put GITHUB_CLIENT_ID
+wrangler secret put GITHUB_CLIENT_SECRET
+wrangler secret put GITHUB_ALLOWED_REPO    # e.g. your-org/your-repo
+```
+
+5. Visit `/admin` and sign in with GitHub.
+
+### Access control
+
+Access is gated by GitHub repository visibility:
+
+- **Private repo**: Only collaborators with access to the repo can sign in. This is the recommended setup.
+- **Public repo**: Any GitHub user can sign in (since public repos are visible to everyone).
+
+To restrict access, use a private repository as your `GITHUB_ALLOWED_REPO` and manage collaborators through GitHub's repository settings.
 
 ## API Documentation
 
@@ -180,9 +200,11 @@ jobs:
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `ADMIN_PASSWORD` | Yes | Password for the admin panel at `/admin` |
+| `GITHUB_CLIENT_ID` | Yes | OAuth App client ID |
+| `GITHUB_CLIENT_SECRET` | Yes | OAuth App client secret |
+| `GITHUB_ALLOWED_REPO` | Yes | Repository to gate access on (format: `owner/repo`) |
 
-Set this as a secret in your Cloudflare Workers dashboard or in `.dev.vars` for local development.
+Set these as secrets via `wrangler secret put` or in `.dev.vars` for local development.
 
 ### Cloudflare Resources
 
@@ -227,8 +249,8 @@ herald/
     client/         # Client-side JS and CSS
     db/             # Database schema types
     middleware/      # Auth middleware (admin + API key)
-    routes/         # Hono route handlers (api, admin, public)
-    services/       # Data access layer (entries, releases, settings, api-keys)
+    routes/         # Hono route handlers (auth, api, admin, public)
+    services/       # Data access layer (entries, releases, settings, api-keys, github)
     index.ts        # App entry point
   wrangler.jsonc    # Cloudflare Workers config
 ```
