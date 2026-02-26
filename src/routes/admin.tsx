@@ -21,6 +21,7 @@ import {
 import { getAllSettings, getSetting, setSetting } from '../services/settings';
 import { createApiKey, listApiKeys, deleteApiKey } from '../services/api-keys';
 import { enqueueAISummarization } from '../services/ai';
+import { purgePublicCache } from '../services/cache';
 import type { Category, EntryStatus, ReleaseStatus } from '../db/schema';
 
 import { AdminLayout } from '../views/layouts/admin-layout';
@@ -40,6 +41,19 @@ const admin = new Hono<{
 // Apply admin auth middleware to all admin routes
 // The middleware itself excludes /admin/login
 admin.use('/*', adminAuth);
+
+// Purge public page cache after any successful mutation
+admin.use('/*', async (c, next) => {
+  await next();
+  if (c.req.method === 'POST') {
+    const status = c.res.status;
+    if ((status >= 200 && status < 400) || status === 302) {
+      const url = new URL(c.req.url);
+      const baseUrl = c.env.BASE_URL || `${url.protocol}//${url.host}`;
+      c.executionCtx.waitUntil(purgePublicCache(baseUrl));
+    }
+  }
+});
 
 // ─── Login ───────────────────────────────────────────────
 

@@ -11,7 +11,7 @@ export default defineConfig(async ({ mode }) => {
       build: {
         outDir: './dist/assets',
         rollupOptions: {
-          input: ['./src/client/main.ts', './src/client/styles/main.css'],
+          input: ['./src/client/main.ts', './src/client/styles/main.css', './src/client/embed.ts'],
           output: {
             entryFileNames: '[name].js',
             assetFileNames: '[name].[ext]',

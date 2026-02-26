@@ -24,12 +24,27 @@ import {
   deleteApiKey,
 } from '../services/api-keys';
 import { enqueueAISummarization } from '../services/ai';
+import { purgePublicCache } from '../services/cache';
 import type { Category, EntryStatus, ReleaseStatus } from '../db/schema';
 
 const api = new Hono<{ Bindings: Bindings }>();
 
 // Apply API key auth to all routes
 api.use('/*', apiKeyAuth);
+
+// Purge public page cache after any successful mutation
+api.use('/*', async (c, next) => {
+  await next();
+  const method = c.req.method;
+  if (method === 'POST' || method === 'PUT' || method === 'DELETE') {
+    const status = c.res.status;
+    if (status >= 200 && status < 400) {
+      const url = new URL(c.req.url);
+      const baseUrl = c.env.BASE_URL || `${url.protocol}//${url.host}`;
+      c.executionCtx.waitUntil(purgePublicCache(baseUrl));
+    }
+  }
+});
 
 // ─── Entries ───────────────────────────────────────────────
 
