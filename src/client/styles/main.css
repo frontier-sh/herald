@@ -2193,6 +2193,46 @@ tbody tr:hover {
 }
 
 /* ============================================
+   Embed Widget Layout
+   ============================================ */
+.embed-body {
+  background-color: transparent;
+  min-height: auto;
+  overflow: hidden;
+}
+
+.embed-container {
+  max-width: 100%;
+  padding: 0 var(--space-4);
+}
+
+.embed-container .changelog-hero {
+  padding: var(--space-4) 0 var(--space-6);
+}
+
+.embed-container .changelog-title {
+  font-size: var(--text-2xl);
+}
+
+.embed-container .changelog-subtitle {
+  font-size: var(--text-base);
+}
+
+.embed-container .changelog-timeline .timeline-item {
+  margin-bottom: var(--space-10);
+}
+
+@media (max-width: 640px) {
+  .embed-container .changelog-hero {
+    padding: var(--space-3) 0 var(--space-4);
+  }
+
+  .embed-container .changelog-title {
+    font-size: var(--text-xl);
+  }
+}
+
+/* ============================================
    AI Status Badges
    ============================================ */
 .ai-badge {

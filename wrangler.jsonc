@@ -40,5 +40,7 @@
   },
 
   // Environment variables (set via wrangler secret or .dev.vars)
-  "vars": {}
+  "vars": {
+    "BASE_URL": ""
+  }
 }
