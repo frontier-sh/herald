@@ -6,6 +6,8 @@ interface PublicLayoutProps {
   title?: string;
   description?: string;
   projectName?: string;
+  logoUrl?: string | null;
+  faviconUrl?: string | null;
 }
 
 export const PublicLayout: FC<PublicLayoutProps> = ({
@@ -13,6 +15,8 @@ export const PublicLayout: FC<PublicLayoutProps> = ({
   title,
   description,
   projectName,
+  logoUrl,
+  faviconUrl,
 }) => {
   const displayName = projectName || 'Changelog';
   const pageTitle = title ? `${title} - ${displayName}` : displayName;
@@ -42,13 +46,20 @@ export const PublicLayout: FC<PublicLayoutProps> = ({
           rel="stylesheet"
         />
         <link rel="alternate" type="application/rss+xml" title={`${displayName} RSS Feed`} href="/feed.xml" />
+        {faviconUrl && <link rel="icon" href={faviconUrl} />}
         <ClientHead />
       </head>
       <body class="public-body">
         <div class="public-layout">
           <header class="public-header">
             <div class="public-header-inner">
-              <a href="/" class="public-brand">{displayName}</a>
+              <a href="/" class="public-brand">
+                {logoUrl ? (
+                  <img src={logoUrl} alt={displayName} class="public-brand-logo" />
+                ) : (
+                  displayName
+                )}
+              </a>
               <a href="/feed.xml" class="rss-link" title="RSS Feed" target="_blank" rel="noopener">
                 <svg class="rss-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
                   <circle cx="6.18" cy="17.82" r="2.18" />

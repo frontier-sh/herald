@@ -47,10 +47,51 @@ async function fetchChangelogData(db: D1Database) {
   }
   const standaloneEntries = allPublishedEntries.filter((e) => !releaseEntryIds.has(e.id));
 
-  return { projectName, projectDescription, releases, standaloneEntries };
+  const logoKey = settings['logo_image_key'] || '';
+  const faviconKey = settings['favicon_image_key'] || '';
+  const logoUrl = logoKey ? `/images/${logoKey}` : null;
+  const faviconUrl = faviconKey ? `/images/${faviconKey}` : null;
+
+  return { projectName, projectDescription, releases, standaloneEntries, logoUrl, faviconUrl };
 }
 
 const pub = new Hono<{ Bindings: Bindings }>();
+
+// ─── Image Serving ─────────────────────────────────────
+
+pub.get('/images/:key', async (c) => {
+  const key = c.req.param('key');
+
+  // Validate key format: alphanumeric, dots, underscores, hyphens only
+  if (!/^[a-zA-Z0-9_.-]+$/.test(key)) {
+    return c.notFound();
+  }
+
+  // Check edge cache first
+  const cached = await getCachedResponse(c.req.raw);
+  if (cached) return cached;
+
+  const object = await c.env.IMAGE_STORE.get(key);
+  if (!object) {
+    return c.notFound();
+  }
+
+  const isHashBased = !key.startsWith('_');
+  const cacheControl = isHashBased
+    ? 'public, max-age=31536000, immutable'
+    : 'public, max-age=3600, s-maxage=86400';
+
+  const headers = new Headers();
+  headers.set('Content-Type', object.httpMetadata?.contentType || 'application/octet-stream');
+  headers.set('Cache-Control', cacheControl);
+  headers.set('ETag', object.httpEtag);
+
+  const response = new Response(object.body, { headers });
+
+  c.executionCtx.waitUntil(cacheResponse(c.req.raw, response));
+
+  return response;
+});
 
 // ─── Public Changelog Page ──────────────────────────────
 
@@ -58,7 +99,7 @@ pub.get('/', async (c) => {
   const cached = await getCachedResponse(c.req.raw);
   if (cached) return cached;
 
-  const { projectName, projectDescription, releases, standaloneEntries } =
+  const { projectName, projectDescription, releases, standaloneEntries, logoUrl, faviconUrl } =
     await fetchChangelogData(c.env.DB);
 
   const response = await c.html(
@@ -66,6 +107,8 @@ pub.get('/', async (c) => {
       title="Changelog"
       description={projectDescription}
       projectName={projectName}
+      logoUrl={logoUrl}
+      faviconUrl={faviconUrl}
     >
       <Changelog
         projectName={projectName}
@@ -87,11 +130,11 @@ pub.get('/embed', async (c) => {
   const cached = await getCachedResponse(c.req.raw);
   if (cached) return cached;
 
-  const { projectName, projectDescription, releases, standaloneEntries } =
+  const { projectName, projectDescription, releases, standaloneEntries, logoUrl, faviconUrl } =
     await fetchChangelogData(c.env.DB);
 
   const response = await c.html(
-    <EmbedLayout>
+    <EmbedLayout faviconUrl={faviconUrl}>
       <Changelog
         projectName={projectName}
         projectDescription={projectDescription}

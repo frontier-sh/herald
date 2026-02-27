@@ -34,6 +34,19 @@
     ]
   },
 
+  // R2 Storage for images
+  "r2_buckets": [
+    {
+      "binding": "IMAGE_STORE",
+      "bucket_name": "herald-images"
+    }
+  ],
+
+  // Cloudflare Images (optimization)
+  "images": {
+    "binding": "IMAGES"
+  },
+
   // Static assets
   "assets": {
     "directory": "./dist/assets"

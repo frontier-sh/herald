@@ -4,9 +4,10 @@ import { html } from 'hono/html';
 
 interface EmbedLayoutProps {
   children: any;
+  faviconUrl?: string | null;
 }
 
-export const EmbedLayout: FC<EmbedLayoutProps> = ({ children }) => {
+export const EmbedLayout: FC<EmbedLayoutProps> = ({ children, faviconUrl }) => {
   return (
     <html lang="en">
       <head>
@@ -18,6 +19,7 @@ export const EmbedLayout: FC<EmbedLayoutProps> = ({ children }) => {
           href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,200..800&family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=JetBrains+Mono:wght@400;500;600&display=swap"
           rel="stylesheet"
         />
+        {faviconUrl && <link rel="icon" href={faviconUrl} />}
         <ClientHead />
       </head>
       <body class="embed-body">

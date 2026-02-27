@@ -16,7 +16,39 @@ document.addEventListener('DOMContentLoaded', () => {
   initToggleSwitches();
   initAiTestButton();
   initDeleteKeyButtons();
+  initCustomiseTabs();
 });
+
+/**
+ * Upload an image to the server for use in markdown editors.
+ */
+function uploadImageHandler(
+  file: File,
+  onSuccess: (url: string) => void,
+  onError: (error: string) => void,
+): void {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  fetch('/admin/images/upload', {
+    method: 'POST',
+    body: formData,
+  })
+    .then((res) => {
+      if (!res.ok) {
+        return res.json().then((data: any) => {
+          throw new Error(data.error || 'Upload failed');
+        });
+      }
+      return res.json();
+    })
+    .then((data: any) => {
+      onSuccess(data.url);
+    })
+    .catch((err) => {
+      onError(err.message || 'Image upload failed');
+    });
+}
 
 /**
  * Initialize EasyMDE on the content editor textarea if present.
@@ -37,6 +69,10 @@ function initEasyMDE(): void {
     },
     status: ['lines', 'words'],
     placeholder: 'Describe the change in detail... (Markdown supported)',
+    uploadImage: true,
+    imageMaxSize: 5 * 1024 * 1024,
+    imageAccept: 'image/png, image/jpeg, image/gif, image/webp',
+    imageUploadFunction: uploadImageHandler,
     toolbar: [
       'bold',
       'italic',
@@ -46,6 +82,8 @@ function initEasyMDE(): void {
       'ordered-list',
       '|',
       'link',
+      'image',
+      'upload-image',
       'code',
       'quote',
       '|',
@@ -76,6 +114,10 @@ function initSummaryEasyMDE(): void {
     },
     status: ['lines', 'words'],
     placeholder: 'Describe this release... (Markdown supported)',
+    uploadImage: true,
+    imageMaxSize: 5 * 1024 * 1024,
+    imageAccept: 'image/png, image/jpeg, image/gif, image/webp',
+    imageUploadFunction: uploadImageHandler,
     toolbar: [
       'bold',
       'italic',
@@ -85,6 +127,8 @@ function initSummaryEasyMDE(): void {
       'ordered-list',
       '|',
       'link',
+      'image',
+      'upload-image',
       'code',
       'quote',
       '|',
@@ -419,6 +463,35 @@ function initDeleteKeyButtons(): void {
         document.body.appendChild(form);
         form.submit();
       }
+    });
+  });
+}
+
+/**
+ * Tab switching for the Customise page distribution section.
+ */
+function initCustomiseTabs(): void {
+  const tabs = document.querySelectorAll<HTMLButtonElement>('.customise-tab');
+  if (tabs.length === 0) return;
+
+  tabs.forEach((tab) => {
+    tab.addEventListener('click', () => {
+      const targetPanel = tab.getAttribute('data-tab');
+      if (!targetPanel) return;
+
+      // Update active tab
+      tabs.forEach((t) => t.classList.remove('active'));
+      tab.classList.add('active');
+
+      // Show/hide panels
+      const panels = document.querySelectorAll<HTMLElement>('.customise-tab-panel');
+      panels.forEach((panel) => {
+        if (panel.getAttribute('data-tab-panel') === targetPanel) {
+          panel.style.display = '';
+        } else {
+          panel.style.display = 'none';
+        }
+      });
     });
   });
 }

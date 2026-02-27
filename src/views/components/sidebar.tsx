@@ -44,6 +44,13 @@ export const Sidebar: FC<SidebarProps> = ({
           </svg>
           Releases
         </a>
+        <a href="/admin/customise" class={isActive('/admin/customise') ? 'active' : ''}>
+          <svg class="nav-icon" width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M13.5 2.5a2 2 0 0 0-2.83 0L5.5 7.67l2.83 2.83 5.17-5.17a2 2 0 0 0 0-2.83z" />
+            <path d="M5.5 7.67L3 12.5a1 1 0 0 0 1.17 1.37l4.33-1.37" />
+          </svg>
+          Customise
+        </a>
         <a href="/admin/settings" class={isActive('/admin/settings') ? 'active' : ''}>
           <svg class="nav-icon" width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round">
             <path d="M2 4h3M9 4h5" />
