@@ -14,8 +14,6 @@ export const SettingsPage: FC<SettingsPageProps> = ({
   apiKeys,
   newKey,
 }) => {
-  const projectName = settings['project_name'] ?? '';
-  const projectDescription = settings['project_description'] ?? '';
   const autoPublish = settings['auto_publish'] === 'true';
   const aiEnabled = settings['ai_enabled'] === 'true';
   const aiModel = resolveModelId(settings['ai_model']);
@@ -35,47 +33,6 @@ export const SettingsPage: FC<SettingsPageProps> = ({
       <div class="page-header">
         <h1>Settings</h1>
       </div>
-
-      {/* General Section */}
-      <SettingsSection
-        title="General"
-        description="Basic information about your changelog project."
-      >
-        <form method="post" action="/admin/settings/general">
-          <div class="form-group">
-            <label for="project_name" class="form-label">
-              Project Name
-            </label>
-            <input
-              type="text"
-              id="project_name"
-              name="project_name"
-              class="form-input"
-              placeholder="My Project"
-              value={projectName}
-            />
-          </div>
-          <div class="form-group">
-            <label for="project_description" class="form-label">
-              Project Description
-            </label>
-            <textarea
-              id="project_description"
-              name="project_description"
-              class="form-textarea"
-              rows={3}
-              placeholder="A brief description of your project..."
-            >
-              {projectDescription}
-            </textarea>
-          </div>
-          <div class="settings-section-footer">
-            <button type="submit" class="btn btn-primary">
-              Save Changes
-            </button>
-          </div>
-        </form>
-      </SettingsSection>
 
       {/* Publishing Section */}
       <SettingsSection

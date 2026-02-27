@@ -81,10 +81,15 @@ pub.get('/images/:key', async (c) => {
     ? 'public, max-age=31536000, immutable'
     : 'public, max-age=3600, s-maxage=86400';
 
+  const contentType = object.httpMetadata?.contentType || 'application/octet-stream';
+
   const headers = new Headers();
-  headers.set('Content-Type', object.httpMetadata?.contentType || 'application/octet-stream');
+  headers.set('Content-Type', contentType);
   headers.set('Cache-Control', cacheControl);
   headers.set('ETag', object.httpEtag);
+  if (contentType === 'image/svg+xml') {
+    headers.set('Content-Security-Policy', "default-src 'none'");
+  }
 
   const response = new Response(object.body, { headers });
 
