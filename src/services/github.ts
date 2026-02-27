@@ -13,7 +13,7 @@ export function getGitHubAuthUrl(
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
-    scope: 'repo',
+    scope: 'repo read:org',
     state,
   });
   return `${GITHUB_AUTH}/authorize?${params.toString()}`;
@@ -74,6 +74,10 @@ export async function getGitHubUser(
  * Check whether the authenticated user has access to a repository.
  * For private repos, returns true only if the user is a collaborator.
  * For public repos, any authenticated user will have access.
+ *
+ * Note: If the repository belongs to a GitHub organization with OAuth app
+ * access restrictions, the OAuth app must be approved by an org owner.
+ * See: https://docs.github.com/en/organizations/managing-oauth-access-to-your-organizations-data
  */
 export async function checkRepoAccess(
   accessToken: string,
@@ -86,6 +90,20 @@ export async function checkRepoAccess(
       'User-Agent': USER_AGENT,
     },
   });
+
+  if (!res.ok) {
+    const body = await res.text();
+    console.error(
+      `checkRepoAccess failed for "${repo}": ${res.status} ${res.statusText} — ${body}`,
+    );
+    if (res.status === 403) {
+      console.error(
+        'Hint: If this repo belongs to a GitHub organization, the organization may need to approve this OAuth app. ' +
+          'Visit https://github.com/settings/connections/applications/<client_id> and request org access, ' +
+          'or ask an org owner to approve it under Organization Settings > Third-party access.',
+      );
+    }
+  }
 
   return res.ok;
 }

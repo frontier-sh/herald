@@ -1,6 +1,7 @@
 import type { FC } from 'hono/jsx';
 import type { ApiKey } from '../../db/schema';
 import { SettingsSection } from '../components/settings-form';
+import { AI_MODELS, DEFAULT_AI_MODEL, resolveModelId } from '../../services/models';
 
 interface SettingsPageProps {
   settings: Record<string, string>;
@@ -17,7 +18,7 @@ export const SettingsPage: FC<SettingsPageProps> = ({
   const projectDescription = settings['project_description'] ?? '';
   const autoPublish = settings['auto_publish'] === 'true';
   const aiEnabled = settings['ai_enabled'] === 'true';
-  const aiModel = settings['ai_model'] ?? '@cf/meta/llama-3.1-8b-instruct';
+  const aiModel = resolveModelId(settings['ai_model']);
 
   const formatDate = (dateStr: string | null): string => {
     if (!dateStr) return 'Never';
@@ -141,30 +142,14 @@ export const SettingsPage: FC<SettingsPageProps> = ({
               AI Model
             </label>
             <select id="ai_model" name="ai_model" class="form-select">
-              <option
-                value="@cf/meta/llama-3.1-8b-instruct"
-                selected={aiModel === '@cf/meta/llama-3.1-8b-instruct'}
-              >
-                Llama 3.1 8B Instruct (Default)
-              </option>
-              <option
-                value="@cf/meta/llama-3.1-70b-instruct"
-                selected={aiModel === '@cf/meta/llama-3.1-70b-instruct'}
-              >
-                Llama 3.1 70B Instruct
-              </option>
-              <option
-                value="@cf/mistral/mistral-7b-instruct-v0.2"
-                selected={aiModel === '@cf/mistral/mistral-7b-instruct-v0.2'}
-              >
-                Mistral 7B Instruct v0.2
-              </option>
-              <option
-                value="@cf/google/gemma-7b-it"
-                selected={aiModel === '@cf/google/gemma-7b-it'}
-              >
-                Gemma 7B IT
-              </option>
+              {AI_MODELS.map((m) => (
+                <option
+                  value={m.id}
+                  selected={aiModel === m.id}
+                >
+                  {m.label}{m.id === DEFAULT_AI_MODEL.id ? ' (Default)' : ''}
+                </option>
+              ))}
             </select>
           </div>
 

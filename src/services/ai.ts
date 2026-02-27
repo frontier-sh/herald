@@ -2,6 +2,38 @@
  * AI service for generating polished changelog entries using Cloudflare Workers AI.
  */
 
+import { resolveModelId } from './models';
+
+/**
+ * Extract the text content from a Workers AI response.
+ *
+ * Older/smaller models return `{ response: string }` while newer models using
+ * the OpenAI-compatible endpoint return
+ * `{ choices: [{ message: { content: string } }] }`.  This helper handles both
+ * shapes so callers don't have to worry about it.
+ */
+export function extractAIText(response: unknown): string {
+  if (response == null) return '';
+
+  const res = response as Record<string, unknown>;
+
+  // Legacy shape: { response: string }
+  if (typeof res.response === 'string') {
+    return res.response;
+  }
+
+  // OpenAI-compatible shape: { choices: [{ message: { content: string } }] }
+  if (Array.isArray(res.choices) && res.choices.length > 0) {
+    const content = (res.choices[0] as any)?.message?.content;
+    if (typeof content === 'string') {
+      return content;
+    }
+  }
+
+  // Last resort – stringify whatever we got back
+  return String(response);
+}
+
 interface SummarizeMessage {
   type: 'summarize';
   entryId: number;
@@ -46,7 +78,7 @@ Rules:
 - Group related changes if there are multiple`;
 
   const response = await ai.run(
-    (model || '@cf/meta/llama-4-scout-17b-16e-instruct') as any,
+    resolveModelId(model) as any,
     {
       messages: [
         { role: 'system', content: systemPrompt },
@@ -59,6 +91,5 @@ Rules:
     },
   );
 
-  // The AI response shape depends on the model, typically { response: string }
-  return (response as any).response || String(response);
+  return extractAIText(response);
 }

@@ -20,7 +20,8 @@ import {
 } from '../services/releases';
 import { getAllSettings, getSetting, setSetting } from '../services/settings';
 import { createApiKey, listApiKeys, deleteApiKey } from '../services/api-keys';
-import { enqueueAISummarization } from '../services/ai';
+import { enqueueAISummarization, extractAIText } from '../services/ai';
+import { resolveModelId } from '../services/models';
 import { purgePublicCache } from '../services/cache';
 import type { Category, EntryStatus, ReleaseStatus } from '../db/schema';
 
@@ -609,7 +610,7 @@ admin.post('/settings/publishing', async (c) => {
 admin.post('/settings/ai', async (c) => {
   const body = await c.req.parseBody();
   const aiEnabled = body['ai_enabled'] === 'true' ? 'true' : 'false';
-  const aiModel = (body['ai_model'] as string) || '@cf/meta/llama-3.1-8b-instruct';
+  const aiModel = resolveModelId(body['ai_model'] as string);
 
   try {
     await setSetting(c.env.DB, 'ai_enabled', aiEnabled);
@@ -627,7 +628,7 @@ admin.post('/settings/ai', async (c) => {
 admin.post('/settings/ai/test', async (c) => {
   try {
     const settings = await getAllSettings(c.env.DB);
-    const model = settings['ai_model'] || '@cf/meta/llama-3.1-8b-instruct';
+    const model = resolveModelId(settings['ai_model']);
 
     const response = await c.env.AI.run(model as any, {
       messages: [
@@ -642,7 +643,7 @@ admin.post('/settings/ai/test', async (c) => {
       ],
     });
 
-    const text = (response as any)?.response || 'No response received from AI.';
+    const text = extractAIText(response) || 'No response received from AI.';
     return c.json({ success: true, result: text });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
