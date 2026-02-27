@@ -8,7 +8,9 @@ A self-hosted changelog solution that makes it easy to track, manage, and publis
 
 ## Features
 
-- Rich Markdown editor for changelog entries
+- Rich Markdown editor with image upload (drag & drop, paste, toolbar)
+- Custom logo and favicon via Settings
+- Image optimization via Cloudflare Images (auto WebP, resize)
 - Categorize changes (Added, Changed, Fixed, Removed, Deprecated, Security)
 - Group entries into versioned releases
 - AI-powered summarization via Cloudflare Workers AI
@@ -24,7 +26,10 @@ A self-hosted changelog solution that makes it easy to track, manage, and publis
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/frontier-sh/herald)
 
-After deploying, you'll need to set up GitHub OAuth -- see [Authentication](#authentication) below.
+After deploying, you'll need to:
+
+1. Create the R2 bucket: `wrangler r2 bucket create herald-images`
+2. Set up GitHub OAuth -- see [Authentication](#authentication) below.
 
 ### Local Development
 
@@ -213,8 +218,10 @@ Herald uses the following Cloudflare resources (auto-provisioned by the Deploy b
 | Resource | Name | Purpose |
 |----------|------|---------|
 | D1 Database | `herald-db` | Stores entries, releases, settings, and API keys |
+| R2 Bucket | `herald-images` | Stores uploaded images (logo, favicon, content images) |
 | Queue | `herald-queue` | Async processing for AI summarization |
 | Workers AI | -- | Optional AI-powered changelog summarization |
+| Images | -- | Automatic image optimization on upload (resize, WebP conversion) |
 
 ### Settings
 
@@ -233,6 +240,8 @@ Configurable via the admin panel or the `/api/settings` endpoint:
 - **Runtime**: [Cloudflare Workers](https://workers.cloudflare.com/)
 - **Framework**: [Hono](https://hono.dev/)
 - **Database**: [Cloudflare D1](https://developers.cloudflare.com/d1/) (SQLite)
+- **Storage**: [Cloudflare R2](https://developers.cloudflare.com/r2/) (image uploads)
+- **Images**: [Cloudflare Images](https://developers.cloudflare.com/images/) (optimization)
 - **AI**: [Cloudflare Workers AI](https://developers.cloudflare.com/workers-ai/)
 - **Queue**: [Cloudflare Queues](https://developers.cloudflare.com/queues/)
 - **Build**: [Vite](https://vite.dev/) + [@hono/vite-build](https://github.com/honojs/vite-plugins)

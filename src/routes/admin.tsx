@@ -22,7 +22,8 @@ import { getAllSettings, getSetting, setSetting } from '../services/settings';
 import { createApiKey, listApiKeys, deleteApiKey } from '../services/api-keys';
 import { enqueueAISummarization, extractAIText } from '../services/ai';
 import { resolveModelId } from '../services/models';
-import { purgePublicCache } from '../services/cache';
+import { purgePublicCache, purgeImageCache } from '../services/cache';
+import { uploadContentImage, uploadBrandImage, deleteImage } from '../services/images';
 import type { Category, EntryStatus, ReleaseStatus } from '../db/schema';
 
 import { AdminLayout } from '../views/layouts/admin-layout';
@@ -33,6 +34,7 @@ import { EntryEdit } from '../views/pages/entry-edit';
 import { ReleasesList } from '../views/pages/releases-list';
 import { ReleaseEdit } from '../views/pages/release-edit';
 import { SettingsPage } from '../views/pages/settings-page';
+import { CustomisePage } from '../views/pages/customise-page';
 
 const admin = new Hono<{
   Bindings: Bindings;
@@ -556,6 +558,21 @@ admin.post('/releases/:id/publish', async (c) => {
   }
 });
 
+// ─── Customise Page ────────────────────────────────────
+
+admin.get('/customise', async (c) => {
+  const flash = getFlash(c);
+  const settings = await getAllSettings(c.env.DB);
+  const url = new URL(c.req.url);
+  const baseUrl = c.env.BASE_URL || `${url.protocol}//${url.host}`;
+
+  return c.html(
+    <AdminLayout title="Customise" currentPath="/admin/customise" flash={flash} githubUser={c.get('githubUser')}>
+      <CustomisePage settings={settings} baseUrl={baseUrl} />
+    </AdminLayout>,
+  );
+});
+
 // ─── Settings Page ──────────────────────────────────────
 
 admin.get('/settings', async (c) => {
@@ -649,6 +666,137 @@ admin.post('/settings/ai/test', async (c) => {
     const message = err instanceof Error ? err.message : 'Unknown error';
     return c.json({ success: false, error: `AI test failed: ${message}` }, 500);
   }
+});
+
+// ─── Image Upload (for EasyMDE) ────────────────────────
+
+admin.post('/images/upload', async (c) => {
+  try {
+    const body = await c.req.parseBody();
+    const file = body['file'];
+
+    if (!file || !(file instanceof File)) {
+      return c.json({ error: 'No file provided' }, 400);
+    }
+
+    const result = await uploadContentImage(c.env.IMAGES, c.env.IMAGE_STORE, file);
+
+    if ('error' in result) {
+      return c.json({ error: result.error }, 400);
+    }
+
+    return c.json({ url: result.url });
+  } catch (err) {
+    return c.json({ error: 'Upload failed' }, 500);
+  }
+});
+
+// ─── Settings: Logo Upload ─────────────────────────────
+
+admin.post('/settings/logo', async (c) => {
+  const body = await c.req.parseBody();
+  const file = body['logo_file'];
+
+  if (!file || !(file instanceof File) || file.size === 0) {
+    setFlash(c, 'error', 'No logo file selected.');
+    return c.redirect('/admin/customise');
+  }
+
+  try {
+    const existingKey = await getSetting(c.env.DB, 'logo_image_key');
+    const result = await uploadBrandImage(c.env.IMAGES, c.env.IMAGE_STORE, file, 'logo', existingKey);
+
+    if ('error' in result) {
+      setFlash(c, 'error', result.error);
+      return c.redirect('/admin/customise');
+    }
+
+    await setSetting(c.env.DB, 'logo_image_key', result.key);
+
+    if (existingKey && existingKey !== result.key) {
+      const url = new URL(c.req.url);
+      const baseUrl = c.env.BASE_URL || `${url.protocol}//${url.host}`;
+      c.executionCtx.waitUntil(purgeImageCache(baseUrl, existingKey));
+    }
+
+    setFlash(c, 'success', 'Logo uploaded successfully.');
+  } catch (err) {
+    setFlash(c, 'error', 'Failed to upload logo.');
+  }
+  return c.redirect('/admin/customise');
+});
+
+// ─── Settings: Logo Remove ─────────────────────────────
+
+admin.post('/settings/logo/remove', async (c) => {
+  try {
+    const existingKey = await getSetting(c.env.DB, 'logo_image_key');
+    if (existingKey) {
+      await deleteImage(c.env.IMAGE_STORE, existingKey);
+      await setSetting(c.env.DB, 'logo_image_key', '');
+      const url = new URL(c.req.url);
+      const baseUrl = c.env.BASE_URL || `${url.protocol}//${url.host}`;
+      c.executionCtx.waitUntil(purgeImageCache(baseUrl, existingKey));
+    }
+    setFlash(c, 'success', 'Logo removed.');
+  } catch (err) {
+    setFlash(c, 'error', 'Failed to remove logo.');
+  }
+  return c.redirect('/admin/customise');
+});
+
+// ─── Settings: Favicon Upload ──────────────────────────
+
+admin.post('/settings/favicon', async (c) => {
+  const body = await c.req.parseBody();
+  const file = body['favicon_file'];
+
+  if (!file || !(file instanceof File) || file.size === 0) {
+    setFlash(c, 'error', 'No favicon file selected.');
+    return c.redirect('/admin/customise');
+  }
+
+  try {
+    const existingKey = await getSetting(c.env.DB, 'favicon_image_key');
+    const result = await uploadBrandImage(c.env.IMAGES, c.env.IMAGE_STORE, file, 'favicon', existingKey);
+
+    if ('error' in result) {
+      setFlash(c, 'error', result.error);
+      return c.redirect('/admin/customise');
+    }
+
+    await setSetting(c.env.DB, 'favicon_image_key', result.key);
+
+    if (existingKey && existingKey !== result.key) {
+      const url = new URL(c.req.url);
+      const baseUrl = c.env.BASE_URL || `${url.protocol}//${url.host}`;
+      c.executionCtx.waitUntil(purgeImageCache(baseUrl, existingKey));
+    }
+
+    setFlash(c, 'success', 'Favicon uploaded successfully.');
+  } catch (err) {
+    setFlash(c, 'error', 'Failed to upload favicon.');
+  }
+  return c.redirect('/admin/customise');
+});
+
+// ─── Settings: Favicon Remove ──────────────────────────
+
+admin.post('/settings/favicon/remove', async (c) => {
+  try {
+    const existingKey = await getSetting(c.env.DB, 'favicon_image_key');
+    if (existingKey) {
+      await deleteImage(c.env.IMAGE_STORE, existingKey);
+      await setSetting(c.env.DB, 'favicon_image_key', '');
+      const url = new URL(c.req.url);
+      const baseUrl = c.env.BASE_URL || `${url.protocol}//${url.host}`;
+      c.executionCtx.waitUntil(purgeImageCache(baseUrl, existingKey));
+    }
+    setFlash(c, 'success', 'Favicon removed.');
+  } catch (err) {
+    setFlash(c, 'error', 'Failed to remove favicon.');
+  }
+  return c.redirect('/admin/customise');
 });
 
 // ─── Settings: Create API Key ───────────────────────────

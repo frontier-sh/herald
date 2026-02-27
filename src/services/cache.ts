@@ -19,3 +19,8 @@ export async function purgePublicCache(baseUrl: string): Promise<void> {
     CACHED_PATHS.map((path) => cache.delete(new Request(baseUrl + path)))
   );
 }
+
+export async function purgeImageCache(baseUrl: string, imageKey: string): Promise<void> {
+  const cache = (caches as any).default as Cache;
+  await cache.delete(new Request(`${baseUrl}/images/${imageKey}`));
+}

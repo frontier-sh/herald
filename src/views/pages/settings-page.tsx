@@ -19,7 +19,6 @@ export const SettingsPage: FC<SettingsPageProps> = ({
   const autoPublish = settings['auto_publish'] === 'true';
   const aiEnabled = settings['ai_enabled'] === 'true';
   const aiModel = resolveModelId(settings['ai_model']);
-
   const formatDate = (dateStr: string | null): string => {
     if (!dateStr) return 'Never';
     return new Date(dateStr).toLocaleDateString('en-US', {
