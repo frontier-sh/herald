@@ -603,7 +603,7 @@ admin.post('/settings/general', async (c) => {
     setFlash(c, 'error', 'Failed to save general settings.');
   }
 
-  return c.redirect('/admin/settings');
+  return c.redirect('/admin/customise');
 });
 
 // ─── Settings: Publishing ───────────────────────────────
@@ -686,6 +686,68 @@ admin.post('/images/upload', async (c) => {
     }
 
     return c.json({ url: result.url });
+  } catch (err) {
+    return c.json({ error: 'Upload failed' }, 500);
+  }
+});
+
+// ─── Brand Image Upload (JSON API for drag-and-drop) ───
+
+admin.post('/images/upload/logo', async (c) => {
+  try {
+    const body = await c.req.parseBody();
+    const file = body['file'];
+
+    if (!file || !(file instanceof File) || file.size === 0) {
+      return c.json({ error: 'No file provided' }, 400);
+    }
+
+    const existingKey = await getSetting(c.env.DB, 'logo_image_key');
+    const result = await uploadBrandImage(c.env.IMAGES, c.env.IMAGE_STORE, file, 'logo', existingKey);
+
+    if ('error' in result) {
+      return c.json({ error: result.error }, 400);
+    }
+
+    await setSetting(c.env.DB, 'logo_image_key', result.key);
+
+    if (existingKey && existingKey !== result.key) {
+      const url = new URL(c.req.url);
+      const baseUrl = c.env.BASE_URL || `${url.protocol}//${url.host}`;
+      c.executionCtx.waitUntil(purgeImageCache(baseUrl, existingKey));
+    }
+
+    return c.json({ url: `/images/${result.key}` });
+  } catch (err) {
+    return c.json({ error: 'Upload failed' }, 500);
+  }
+});
+
+admin.post('/images/upload/favicon', async (c) => {
+  try {
+    const body = await c.req.parseBody();
+    const file = body['file'];
+
+    if (!file || !(file instanceof File) || file.size === 0) {
+      return c.json({ error: 'No file provided' }, 400);
+    }
+
+    const existingKey = await getSetting(c.env.DB, 'favicon_image_key');
+    const result = await uploadBrandImage(c.env.IMAGES, c.env.IMAGE_STORE, file, 'favicon', existingKey);
+
+    if ('error' in result) {
+      return c.json({ error: result.error }, 400);
+    }
+
+    await setSetting(c.env.DB, 'favicon_image_key', result.key);
+
+    if (existingKey && existingKey !== result.key) {
+      const url = new URL(c.req.url);
+      const baseUrl = c.env.BASE_URL || `${url.protocol}//${url.host}`;
+      c.executionCtx.waitUntil(purgeImageCache(baseUrl, existingKey));
+    }
+
+    return c.json({ url: `/images/${result.key}` });
   } catch (err) {
     return c.json({ error: 'Upload failed' }, 500);
   }

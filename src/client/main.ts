@@ -17,6 +17,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initAiTestButton();
   initDeleteKeyButtons();
   initCustomiseTabs();
+  initBrandUploaders();
 });
 
 /**
@@ -494,4 +495,181 @@ function initCustomiseTabs(): void {
       });
     });
   });
+}
+
+/**
+ * Brand image uploaders with drag-and-drop and progress bar.
+ */
+function initBrandUploaders(): void {
+  const dropzones = document.querySelectorAll<HTMLElement>('.brand-dropzone');
+
+  dropzones.forEach((zone) => {
+    const uploadUrl = zone.getAttribute('data-upload-url');
+    const acceptAttr = zone.getAttribute('data-accept') || 'image/*';
+    const fileInput = zone.querySelector<HTMLInputElement>('input[type="file"]');
+    if (!uploadUrl || !fileInput) return;
+
+    // Click to open file picker
+    zone.addEventListener('click', (e) => {
+      if ((e.target as HTMLElement).closest('button')) return;
+      fileInput.click();
+    });
+
+    // File selected
+    fileInput.addEventListener('change', () => {
+      if (fileInput.files && fileInput.files[0]) {
+        uploadBrandFile(zone, uploadUrl, fileInput.files[0]);
+      }
+    });
+
+    // Drag and drop
+    zone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      zone.classList.add('brand-dropzone-active');
+    });
+
+    zone.addEventListener('dragleave', (e) => {
+      e.preventDefault();
+      zone.classList.remove('brand-dropzone-active');
+    });
+
+    zone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      zone.classList.remove('brand-dropzone-active');
+      if (e.dataTransfer && e.dataTransfer.files[0]) {
+        const file = e.dataTransfer.files[0];
+        if (!isFileAccepted(file, acceptAttr)) {
+          showDropzoneError(zone, 'Invalid file type');
+          return;
+        }
+        uploadBrandFile(zone, uploadUrl, file);
+      }
+    });
+  });
+}
+
+function isFileAccepted(file: File, accept: string): boolean {
+  return accept.split(',').some((token) => {
+    const t = token.trim();
+    if (t.startsWith('.')) return file.name.toLowerCase().endsWith(t.toLowerCase());
+    if (t.endsWith('/*')) return file.type.startsWith(t.slice(0, -1));
+    return file.type === t;
+  });
+}
+
+function uploadBrandFile(zone: HTMLElement, url: string, file: File): void {
+  const progressContainer = zone.querySelector<HTMLElement>('.brand-dropzone-progress');
+  const progressFill = zone.querySelector<HTMLElement>('.brand-dropzone-progress-fill');
+  if (!progressContainer || !progressFill) return;
+
+  // Clear any existing errors
+  zone.querySelectorAll('.brand-dropzone-error').forEach((el) => el.remove());
+
+  // Show progress
+  progressContainer.style.display = 'block';
+  progressFill.style.width = '0%';
+  zone.classList.add('brand-dropzone-uploading');
+
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const xhr = new XMLHttpRequest();
+
+  xhr.upload.addEventListener('progress', (e) => {
+    if (e.lengthComputable) {
+      const percent = (e.loaded / e.total) * 100;
+      progressFill.style.width = percent + '%';
+    }
+  });
+
+  xhr.addEventListener('load', () => {
+    zone.classList.remove('brand-dropzone-uploading');
+    if (xhr.status >= 200 && xhr.status < 300) {
+      try {
+        const data = JSON.parse(xhr.responseText);
+        if (data.url) {
+          updateDropzonePreview(zone, data.url);
+          progressContainer.style.display = 'none';
+          progressFill.style.width = '0%';
+        } else if (data.error) {
+          showDropzoneError(zone, data.error);
+        }
+      } catch {
+        showDropzoneError(zone, 'Upload failed');
+      }
+    } else {
+      try {
+        const data = JSON.parse(xhr.responseText);
+        showDropzoneError(zone, data.error || 'Upload failed');
+      } catch {
+        showDropzoneError(zone, 'Upload failed');
+      }
+    }
+  });
+
+  xhr.addEventListener('error', () => {
+    zone.classList.remove('brand-dropzone-uploading');
+    showDropzoneError(zone, 'Upload failed');
+  });
+
+  xhr.open('POST', url);
+  xhr.send(formData);
+}
+
+function updateDropzonePreview(zone: HTMLElement, imageUrl: string): void {
+  const cacheBustedUrl = imageUrl + '?t=' + Date.now();
+  let preview = zone.querySelector<HTMLElement>('.brand-dropzone-preview');
+  const empty = zone.querySelector<HTMLElement>('.brand-dropzone-empty');
+
+  if (preview) {
+    // Update existing preview image
+    const img = preview.querySelector<HTMLImageElement>('img');
+    if (img) {
+      img.src = cacheBustedUrl;
+    }
+  } else {
+    // Create preview, hide empty state
+    if (empty) empty.style.display = 'none';
+    preview = document.createElement('div');
+    preview.className = 'brand-dropzone-preview';
+
+    const isFavicon = zone.getAttribute('data-upload-url')?.includes('favicon');
+    const img = document.createElement('img');
+    img.src = cacheBustedUrl;
+    img.alt = isFavicon ? 'Current favicon' : 'Current logo';
+    img.className = isFavicon ? 'brand-preview-favicon' : 'brand-preview-image';
+    preview.appendChild(img);
+    zone.insertBefore(preview, zone.querySelector('.brand-dropzone-progress'));
+  }
+
+  // Show the remove button if it was hidden
+  const removeForm = zone.parentElement?.querySelector<HTMLElement>('.brand-remove-form');
+  if (removeForm) {
+    removeForm.style.display = '';
+  } else {
+    // Create the remove button if it doesn't exist yet
+    const isFavicon = zone.getAttribute('data-upload-url')?.includes('favicon');
+    const removeAction = isFavicon ? '/admin/settings/favicon/remove' : '/admin/settings/logo/remove';
+    const form = document.createElement('form');
+    form.method = 'post';
+    form.action = removeAction;
+    form.className = 'brand-remove-form';
+    const btn = document.createElement('button');
+    btn.type = 'submit';
+    btn.className = 'btn btn-secondary btn-sm';
+    btn.textContent = 'Remove';
+    form.appendChild(btn);
+    zone.parentElement?.appendChild(form);
+  }
+}
+
+function showDropzoneError(zone: HTMLElement, message: string): void {
+  const progressContainer = zone.querySelector<HTMLElement>('.brand-dropzone-progress');
+  if (progressContainer) progressContainer.style.display = 'none';
+
+  const errorEl = document.createElement('div');
+  errorEl.className = 'brand-dropzone-error';
+  errorEl.textContent = message;
+  zone.appendChild(errorEl);
+  setTimeout(() => errorEl.remove(), 3000);
 }
