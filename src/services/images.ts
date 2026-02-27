@@ -80,16 +80,23 @@ async function optimizeAndStore(
   maxWidth: number = 1920,
 ): Promise<void> {
   if (RASTER_TYPES.has(contentType)) {
-    const stream = arrayBufferToStream(buffer);
-    const result = await images
-      .input(stream)
-      .transform({ width: maxWidth, fit: 'scale-down' })
-      .output({ format: 'image/webp' });
-    const response = result.response();
-    const optimized = await response.arrayBuffer();
-    await bucket.put(key, optimized, {
-      httpMetadata: { contentType: 'image/webp' },
-    });
+    try {
+      const stream = arrayBufferToStream(buffer);
+      const result = await images
+        .input(stream)
+        .transform({ width: maxWidth, fit: 'scale-down' })
+        .output({ format: 'image/webp' });
+      const response = result.response();
+      const optimized = await response.arrayBuffer();
+      await bucket.put(key, optimized, {
+        httpMetadata: { contentType: 'image/webp' },
+      });
+    } catch {
+      // Cloudflare Images binding unavailable (e.g. local dev) — store unoptimized
+      await bucket.put(key, buffer, {
+        httpMetadata: { contentType },
+      });
+    }
   } else {
     await bucket.put(key, buffer, {
       httpMetadata: { contentType },

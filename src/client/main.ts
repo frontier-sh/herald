@@ -617,7 +617,7 @@ function uploadBrandFile(zone: HTMLElement, url: string, file: File): void {
 }
 
 function updateDropzonePreview(zone: HTMLElement, imageUrl: string): void {
-  const cacheBustedUrl = imageUrl + '?t=' + Date.now();
+  const cacheBustedUrl = imageUrl + '?v=' + Date.now();
   let preview = zone.querySelector<HTMLElement>('.brand-dropzone-preview');
   const empty = zone.querySelector<HTMLElement>('.brand-dropzone-empty');
 
