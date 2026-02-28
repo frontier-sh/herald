@@ -35,6 +35,7 @@ import { ReleasesList } from '../views/pages/releases-list';
 import { ReleaseEdit } from '../views/pages/release-edit';
 import { SettingsPage } from '../views/pages/settings-page';
 import { CustomisePage } from '../views/pages/customise-page';
+import onboarding from './onboarding';
 
 const admin = new Hono<{
   Bindings: Bindings;
@@ -58,6 +59,10 @@ admin.use('/*', async (c, next) => {
   }
 });
 
+// ─── Onboarding ─────────────────────────────────────────
+
+admin.route('/onboarding', onboarding);
+
 // ─── Login ───────────────────────────────────────────────
 
 admin.get('/login', (c) => {
@@ -69,6 +74,18 @@ admin.get('/login', (c) => {
 // ─── Dashboard ───────────────────────────────────────────
 
 admin.get('/', async (c) => {
+  // Redirect to onboarding if not completed
+  const onboardingCompleted = await getSetting(c.env.DB, 'onboarding_completed');
+  if (onboardingCompleted !== 'true') {
+    // Auto-complete for existing installations that already have a project name
+    const projectName = await getSetting(c.env.DB, 'project_name');
+    if (projectName) {
+      await setSetting(c.env.DB, 'onboarding_completed', 'true');
+    } else {
+      return c.redirect('/admin/onboarding');
+    }
+  }
+
   const flash = getFlash(c);
   const allEntries = await listEntries(c.env.DB);
   const publishedEntries = await listEntries(c.env.DB, { status: 'published' as EntryStatus });
