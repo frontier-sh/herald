@@ -156,6 +156,53 @@ pub.get('/embed', async (c) => {
   return response;
 });
 
+// ─── Embed JSON API (public, no auth) ───────────────────
+
+pub.get('/embed.json', async (c) => {
+  const cached = await getCachedResponse(c.req.raw);
+  if (cached) return cached;
+
+  const { projectName, projectDescription, releases, standaloneEntries } =
+    await fetchChangelogData(c.env.DB);
+
+  const url = new URL(c.req.url);
+  const changelogUrl = `${url.protocol}//${url.host}`;
+
+  const data = {
+    projectName,
+    projectDescription,
+    changelogUrl,
+    releases: releases.map((r) => ({
+      id: r.id,
+      version: r.version,
+      title: r.title,
+      summary: r.summary,
+      published_at: r.published_at,
+      entries: r.entries.map((e) => ({
+        id: e.id,
+        title: e.title,
+        content: e.content,
+        category: e.category,
+        published_at: e.published_at,
+      })),
+    })),
+    standaloneEntries: standaloneEntries.map((e) => ({
+      id: e.id,
+      title: e.title,
+      content: e.content,
+      category: e.category,
+      published_at: e.published_at,
+    })),
+  };
+
+  const response = c.json(data);
+  response.headers.set('Cache-Control', 'public, s-maxage=31536000, stale-while-revalidate=60');
+  response.headers.set('Access-Control-Allow-Origin', '*');
+  c.executionCtx.waitUntil(cacheResponse(c.req.raw, response));
+
+  return response;
+});
+
 // ─── Embed Script Redirect ──────────────────────────────
 
 pub.get('/embed.js', (c) => {
