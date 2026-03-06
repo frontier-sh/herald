@@ -12,6 +12,8 @@ interface ChangelogProps {
   projectDescription: string;
   releases: ReleaseWithEntries[];
   standaloneEntries: Entry[];
+  limit?: number;
+  changelogUrl?: string;
 }
 
 const CATEGORY_COLORS: Record<Category, { bg: string; text: string }> = {
@@ -67,9 +69,19 @@ export const Changelog: FC<ChangelogProps> = ({
   projectDescription,
   releases,
   standaloneEntries,
+  limit,
+  changelogUrl,
 }) => {
   const hasContent = releases.length > 0 || standaloneEntries.length > 0;
-  const allCategories = collectCategories(releases, standaloneEntries);
+
+  // When limit is set, count releases + standalone groups toward the limit
+  const totalItems = releases.length + (standaloneEntries.length > 0 ? 1 : 0);
+  const isLimited = typeof limit === 'number' && limit > 0 && totalItems > limit;
+  const displayReleases = isLimited ? releases.slice(0, limit) : releases;
+  // Only show standalone entries if we haven't already hit the limit with releases
+  const displayStandalone = isLimited && displayReleases.length >= limit ? [] : standaloneEntries;
+
+  const allCategories = collectCategories(displayReleases, displayStandalone);
 
   return (
     <div class="changelog">
@@ -101,7 +113,7 @@ export const Changelog: FC<ChangelogProps> = ({
       {hasContent ? (
         <div class="changelog-timeline">
           <div class="timeline">
-            {releases.map((release) => {
+            {displayReleases.map((release) => {
               const grouped = groupEntriesByCategory(release.entries);
               const summaryHtml = renderMarkdown(release.summary || '');
               const releaseDate = release.published_at || release.created_at;
@@ -152,7 +164,7 @@ export const Changelog: FC<ChangelogProps> = ({
               );
             })}
 
-            {standaloneEntries.length > 0 && (
+            {displayStandalone.length > 0 && (
               <div class="timeline-item" id="standalone-entries">
                 <div class="timeline-marker"></div>
                 <div class="timeline-content">
@@ -161,7 +173,7 @@ export const Changelog: FC<ChangelogProps> = ({
                   </div>
                   <div class="timeline-entries">
                     {(() => {
-                      const grouped = groupEntriesByCategory(standaloneEntries);
+                      const grouped = groupEntriesByCategory(displayStandalone);
                       return CATEGORIES.filter((cat) => grouped[cat]).map((cat) => (
                         <div class="entry-group" data-category={cat}>
                           <h3 class="entry-group-title">
@@ -193,6 +205,13 @@ export const Changelog: FC<ChangelogProps> = ({
               </div>
             )}
           </div>
+          {isLimited && changelogUrl && (
+            <div class="changelog-view-more">
+              <a href={changelogUrl} target="_blank" rel="noopener noreferrer" class="changelog-view-more-link">
+                View all updates &rarr;
+              </a>
+            </div>
+          )}
         </div>
       ) : (
         <div class="changelog-empty">

@@ -124,6 +124,7 @@ pub.get('/', async (c) => {
     </PublicLayout>,
   );
 
+  response.headers.set('Cache-Control', 'public, s-maxage=31536000, stale-while-revalidate=60');
   c.executionCtx.waitUntil(cacheResponse(c.req.raw, response));
 
   return response;
@@ -138,6 +139,12 @@ pub.get('/embed', async (c) => {
   const { projectName, projectDescription, releases, standaloneEntries, logoUrl, faviconUrl } =
     await fetchChangelogData(c.env.DB);
 
+  const limitParam = c.req.query('limit');
+  const limit = limitParam ? Math.max(1, Math.min(100, parseInt(limitParam, 10) || 0)) : undefined;
+
+  const url = new URL(c.req.url);
+  const changelogUrl = `${url.protocol}//${url.host}`;
+
   const response = await c.html(
     <EmbedLayout faviconUrl={faviconUrl}>
       <Changelog
@@ -145,10 +152,13 @@ pub.get('/embed', async (c) => {
         projectDescription={projectDescription}
         releases={releases}
         standaloneEntries={standaloneEntries}
+        limit={limit}
+        changelogUrl={changelogUrl}
       />
     </EmbedLayout>,
   );
 
+  response.headers.set('Cache-Control', 'public, s-maxage=31536000, stale-while-revalidate=60');
   c.executionCtx.waitUntil(cacheResponse(c.req.raw, response));
 
   return response;
@@ -205,6 +215,7 @@ pub.get('/feed.xml', async (c) => {
 
   const response = await c.body(xml, 200, {
     'Content-Type': 'application/xml; charset=utf-8',
+    'Cache-Control': 'public, s-maxage=31536000, stale-while-revalidate=60',
   });
 
   c.executionCtx.waitUntil(cacheResponse(c.req.raw, response));

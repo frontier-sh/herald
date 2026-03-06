@@ -24,11 +24,20 @@
     heraldOrigin = window.location.origin;
   }
 
-  var embedUrl = heraldOrigin + '/embed';
+  var embedBaseUrl = heraldOrigin + '/embed';
+
+  function buildEmbedUrl(container: HTMLElement): string {
+    var url = embedBaseUrl;
+    var limit = container.getAttribute('data-herald-limit');
+    if (limit && /^\d+$/.test(limit)) {
+      url += '?limit=' + limit;
+    }
+    return url;
+  }
 
   function createIframe(container: HTMLElement): HTMLIFrameElement {
     var iframe = document.createElement('iframe');
-    iframe.src = embedUrl;
+    iframe.src = buildEmbedUrl(container);
     iframe.style.width = '100%';
     iframe.style.border = 'none';
     iframe.style.overflow = 'hidden';
