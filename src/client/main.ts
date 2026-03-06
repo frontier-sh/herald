@@ -14,6 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initCategoryFilters();
   initCopyButtons();
   initToggleSwitches();
+  initAiToggleVisibility();
   initAiTestButton();
   initDeleteKeyButtons();
   initCustomiseTabs();
@@ -394,7 +395,22 @@ function initToggleSwitches(): void {
 }
 
 /**
+ * Show/hide AI options based on the AI enabled toggle.
+ */
+function initAiToggleVisibility(): void {
+  const toggle = document.querySelector<HTMLInputElement>('input[name="ai_enabled"]');
+  const aiOptions = document.getElementById('ai-options');
+  if (!toggle || !aiOptions) return;
+
+  toggle.addEventListener('change', () => {
+    aiOptions.style.display = toggle.checked ? '' : 'none';
+  });
+}
+
+/**
  * AI test button: sends a test request and displays the result.
+ * Sends the currently selected model and personality from the dropdowns
+ * so the user can compare models without saving first.
  */
 function initAiTestButton(): void {
   const testBtn = document.getElementById('ai-test-btn');
@@ -404,6 +420,12 @@ function initAiTestButton(): void {
     const resultContainer = document.getElementById('ai-test-result');
     const resultOutput = document.getElementById('ai-test-output');
     if (!resultContainer || !resultOutput) return;
+
+    // Read current dropdown values
+    const modelSelect = document.getElementById('ai_model') as HTMLSelectElement | null;
+    const personalitySelect = document.getElementById('ai_personality') as HTMLSelectElement | null;
+    const model = modelSelect?.value || '';
+    const personality = personalitySelect?.value || 'neutral';
 
     // Show loading state
     testBtn.setAttribute('disabled', 'true');
@@ -417,6 +439,7 @@ function initAiTestButton(): void {
         headers: {
           'Content-Type': 'application/json',
         },
+        body: JSON.stringify({ model, personality }),
       });
 
       const data = await response.json() as { success: boolean; result?: string; error?: string };

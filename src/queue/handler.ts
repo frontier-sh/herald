@@ -36,6 +36,10 @@ export async function handleQueue(
         "SELECT value FROM settings WHERE key = 'ai_model'",
       ).first();
 
+      const personalitySetting = await env.DB.prepare(
+        "SELECT value FROM settings WHERE key = 'ai_personality'",
+      ).first();
+
       if (!entry) {
         message.ack();
         continue;
@@ -47,6 +51,7 @@ export async function handleQueue(
         rawContent,
         entry.category as string,
         modelSetting?.value as string,
+        (personalitySetting?.value as string) || 'neutral',
       );
 
       // Update entry with AI-generated content

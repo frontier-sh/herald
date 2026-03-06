@@ -645,10 +645,15 @@ admin.post('/settings/ai', async (c) => {
   const body = await c.req.parseBody();
   const aiEnabled = body['ai_enabled'] === 'true' ? 'true' : 'false';
   const aiModel = resolveModelId(body['ai_model'] as string);
+  const validPersonalities = ['neutral', 'professional', 'casual'];
+  const aiPersonality = validPersonalities.includes(body['ai_personality'] as string)
+    ? (body['ai_personality'] as string)
+    : 'neutral';
 
   try {
     await setSetting(c.env.DB, 'ai_enabled', aiEnabled);
     await setSetting(c.env.DB, 'ai_model', aiModel);
+    await setSetting(c.env.DB, 'ai_personality', aiPersonality);
     setFlash(c, 'success', 'AI settings saved successfully.');
   } catch (err) {
     setFlash(c, 'error', 'Failed to save AI settings.');
@@ -661,14 +666,23 @@ admin.post('/settings/ai', async (c) => {
 
 admin.post('/settings/ai/test', async (c) => {
   try {
-    const settings = await getAllSettings(c.env.DB);
-    const model = resolveModelId(settings['ai_model']);
+    const body = await c.req.json().catch(() => ({})) as { model?: string; personality?: string };
+    const model = resolveModelId(body.model);
+    const personality = body.personality || 'neutral';
+
+    const personalityInstructions: Record<string, string> = {
+      neutral: 'Write in a clear, straightforward tone.',
+      professional: 'Write in a formal, polished, corporate tone. Use precise technical language.',
+      casual: 'Write in a friendly, conversational tone. Keep it light and approachable.',
+    };
+
+    const systemContent = `You are a helpful assistant that writes concise changelog entries. ${personalityInstructions[personality] || personalityInstructions['neutral']}`;
 
     const response = await c.env.AI.run(model as any, {
       messages: [
         {
           role: 'system',
-          content: 'You are a helpful assistant that writes concise changelog entries.',
+          content: systemContent,
         },
         {
           role: 'user',

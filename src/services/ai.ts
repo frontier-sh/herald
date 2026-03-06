@@ -65,10 +65,20 @@ export async function summarizeContent(
   content: string,
   category: string,
   model?: string,
+  personality?: string,
 ): Promise<string> {
+  const personalityInstructions: Record<string, string> = {
+    neutral: 'Write in a clear, straightforward tone.',
+    professional: 'Write in a formal, polished, corporate tone. Use precise technical language.',
+    casual: 'Write in a friendly, conversational tone. Keep it light and approachable.',
+  };
+
+  const toneInstruction = personalityInstructions[personality || 'neutral'] || personalityInstructions['neutral'];
+
   const systemPrompt = `You are a technical writer creating changelog entries.
 Given raw commit messages or notes, create a clear, concise changelog entry.
 Category: ${category}
+Tone: ${toneInstruction}
 Rules:
 - Write in past tense
 - Be concise but informative

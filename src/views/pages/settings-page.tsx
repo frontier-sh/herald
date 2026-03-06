@@ -17,6 +17,7 @@ export const SettingsPage: FC<SettingsPageProps> = ({
   const autoPublish = settings['auto_publish'] === 'true';
   const aiEnabled = settings['ai_enabled'] === 'true';
   const aiModel = resolveModelId(settings['ai_model']);
+  const aiPersonality = settings['ai_personality'] || 'neutral';
   const formatDate = (dateStr: string | null): string => {
     if (!dateStr) return 'Never';
     return new Date(dateStr).toLocaleDateString('en-US', {
@@ -87,39 +88,51 @@ export const SettingsPage: FC<SettingsPageProps> = ({
                 name="ai_enabled"
                 value="true"
                 checked={aiEnabled}
-                data-toggle-submit
               />
               <span class="toggle-slider"></span>
             </label>
           </div>
 
-          <div class="form-group">
-            <label for="ai_model" class="form-label">
-              AI Model
-            </label>
-            <select id="ai_model" name="ai_model" class="form-select">
-              {AI_MODELS.map((m) => (
-                <option
-                  value={m.id}
-                  selected={aiModel === m.id}
-                >
-                  {m.label}{m.id === DEFAULT_AI_MODEL.id ? ' (Default)' : ''}
-                </option>
-              ))}
-            </select>
-          </div>
+          <div id="ai-options" style={aiEnabled ? '' : 'display: none;'}>
+            <div class="form-group">
+              <label for="ai_model" class="form-label">
+                AI Model
+              </label>
+              <select id="ai_model" name="ai_model" class="form-select">
+                {AI_MODELS.map((m) => (
+                  <option
+                    value={m.id}
+                    selected={aiModel === m.id}
+                  >
+                    {m.label}{m.id === DEFAULT_AI_MODEL.id ? ' (Default)' : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-          <div class="settings-section-footer">
-            <button type="submit" class="btn btn-primary">
-              Save AI Settings
-            </button>
-            <button
-              type="button"
-              class="btn btn-secondary"
-              id="ai-test-btn"
-            >
-              Test AI
-            </button>
+            <div class="form-group">
+              <label for="ai_personality" class="form-label">
+                Personality
+              </label>
+              <select id="ai_personality" name="ai_personality" class="form-select">
+                <option value="neutral" selected={aiPersonality === 'neutral'}>Neutral</option>
+                <option value="professional" selected={aiPersonality === 'professional'}>Professional</option>
+                <option value="casual" selected={aiPersonality === 'casual'}>Casual</option>
+              </select>
+            </div>
+
+            <div class="settings-section-footer">
+              <button type="submit" class="btn btn-primary">
+                Save AI Settings
+              </button>
+              <button
+                type="button"
+                class="btn btn-secondary"
+                id="ai-test-btn"
+              >
+                Test AI
+              </button>
+            </div>
           </div>
         </form>
 
