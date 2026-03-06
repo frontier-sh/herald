@@ -67,8 +67,6 @@ CREATE INDEX IF NOT EXISTS idx_release_entries_release ON release_entries(releas
 CREATE INDEX IF NOT EXISTS idx_release_entries_entry ON release_entries(entry_id);
 
 -- Default settings
-INSERT OR IGNORE INTO settings (key, value) VALUES ('project_name', 'My Project');
-INSERT OR IGNORE INTO settings (key, value) VALUES ('project_description', '');
 INSERT OR IGNORE INTO settings (key, value) VALUES ('auto_publish', 'false');
 INSERT OR IGNORE INTO settings (key, value) VALUES ('ai_enabled', 'false');
 INSERT OR IGNORE INTO settings (key, value) VALUES ('ai_model', '@cf/meta/llama-4-scout-17b-16e-instruct');
