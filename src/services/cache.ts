@@ -1,6 +1,6 @@
 // Edge caching for public pages using Cloudflare Cache API
 
-const CACHED_PATHS = ['/', '/embed', '/feed.xml'];
+const CACHED_PATHS = ['/', '/embed', '/embed.json', '/feed.xml'];
 
 export async function getCachedResponse(request: Request): Promise<Response | undefined> {
   const cache = (caches as any).default as Cache;

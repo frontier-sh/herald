@@ -26,6 +26,8 @@ export const CustomisePage: FC<CustomisePageProps> = ({
   const changelogUrl = baseUrl;
   const embedCode = `<script src="${baseUrl}/embed.js"></script>`;
   const embedCodeWithDiv = `<div data-herald-widget></div>\n<script src="${baseUrl}/embed.js"></script>`;
+  const embedCodeWithLimit = `<div data-herald-widget data-herald-limit="5"></div>\n<script src="${baseUrl}/embed.js"></script>`;
+  const embedCodeInline = `<div data-herald-widget data-herald-inline></div>\n<script src="${baseUrl}/embed.js"></script>`;
   const rssUrl = `${baseUrl}/feed.xml`;
 
   return (
@@ -164,6 +166,16 @@ export const CustomisePage: FC<CustomisePageProps> = ({
           <div class="customise-copyable">
             <code id="embed-code-div" class="customise-code">{embedCodeWithDiv}</code>
             <button type="button" class="btn btn-secondary btn-sm" data-copy-target="embed-code-div">Copy</button>
+          </div>
+          <p class="form-hint">To show only the most recent entries with a "view all" link, add a <code>data-herald-limit</code> attribute:</p>
+          <div class="customise-copyable">
+            <code id="embed-code-limit" class="customise-code">{embedCodeWithLimit}</code>
+            <button type="button" class="btn btn-secondary btn-sm" data-copy-target="embed-code-limit">Copy</button>
+          </div>
+          <p class="form-hint">For full style control, use <code>data-herald-inline</code> to render directly on your page (no iframe). Override CSS variables on <code>.herald-changelog</code> to customise colours and fonts:</p>
+          <div class="customise-copyable">
+            <code id="embed-code-inline" class="customise-code">{embedCodeInline}</code>
+            <button type="button" class="btn btn-secondary btn-sm" data-copy-target="embed-code-inline">Copy</button>
           </div>
         </div>
 

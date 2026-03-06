@@ -2513,6 +2513,32 @@ tbody tr:hover {
 }
 
 /* ============================================
+   View More Link (limited embeds)
+   ============================================ */
+.changelog-view-more {
+  text-align: center;
+  padding: var(--space-8) 0 var(--space-4);
+}
+
+.changelog-view-more-link {
+  display: inline-block;
+  padding: var(--space-3) var(--space-6);
+  font-family: var(--font-heading);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-primary);
+  text-decoration: none;
+  border: 1.5px solid var(--color-primary);
+  border-radius: var(--radius-md);
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.changelog-view-more-link:hover {
+  background-color: var(--color-primary);
+  color: #fff;
+}
+
+/* ============================================
    AI Status Badges
    ============================================ */
 .ai-badge {
