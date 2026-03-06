@@ -40,6 +40,37 @@ export const EmbedLayout: FC<EmbedLayoutProps> = ({ children, faviconUrl }) => {
             sendHeight();
             window.addEventListener('load', sendHeight);
 
+            // Limit logic: read #limit=N from hash, hide excess items, show "view more"
+            (function() {
+              var hash = window.location.hash;
+              var match = hash.match(/limit=(\d+)/);
+              if (!match) return;
+              var limit = parseInt(match[1], 10);
+              if (!limit || limit < 1) return;
+
+              var items = document.querySelectorAll('.timeline-item');
+              if (items.length <= limit) return;
+
+              for (var i = limit; i < items.length; i++) {
+                items[i].style.display = 'none';
+              }
+
+              var changelogUrl = window.location.origin;
+              var container = document.querySelector('.changelog-timeline');
+              if (container) {
+                var viewMore = document.createElement('div');
+                viewMore.className = 'changelog-view-more';
+                var link = document.createElement('a');
+                link.href = changelogUrl;
+                link.target = '_blank';
+                link.rel = 'noopener noreferrer';
+                link.className = 'changelog-view-more-link';
+                link.innerHTML = 'View all updates &rarr;';
+                viewMore.appendChild(link);
+                container.appendChild(viewMore);
+              }
+            })();
+
             // Category filter logic
             document.addEventListener('DOMContentLoaded', function() {
               var filtersContainer = document.getElementById('category-filters');

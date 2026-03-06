@@ -139,12 +139,6 @@ pub.get('/embed', async (c) => {
   const { projectName, projectDescription, releases, standaloneEntries, logoUrl, faviconUrl } =
     await fetchChangelogData(c.env.DB);
 
-  const limitParam = c.req.query('limit');
-  const limit = limitParam ? Math.max(1, Math.min(100, parseInt(limitParam, 10) || 0)) : undefined;
-
-  const url = new URL(c.req.url);
-  const changelogUrl = `${url.protocol}//${url.host}`;
-
   const response = await c.html(
     <EmbedLayout faviconUrl={faviconUrl}>
       <Changelog
@@ -152,8 +146,6 @@ pub.get('/embed', async (c) => {
         projectDescription={projectDescription}
         releases={releases}
         standaloneEntries={standaloneEntries}
-        limit={limit}
-        changelogUrl={changelogUrl}
       />
     </EmbedLayout>,
   );

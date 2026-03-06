@@ -26,18 +26,10 @@
 
   var embedBaseUrl = heraldOrigin + '/embed';
 
-  function buildEmbedUrl(container: HTMLElement): string {
-    var url = embedBaseUrl;
-    var limit = container.getAttribute('data-herald-limit');
-    if (limit && /^\d+$/.test(limit)) {
-      url += '?limit=' + limit;
-    }
-    return url;
-  }
-
   function createIframe(container: HTMLElement): HTMLIFrameElement {
     var iframe = document.createElement('iframe');
-    iframe.src = buildEmbedUrl(container);
+    var limit = container.getAttribute('data-herald-limit');
+    iframe.src = limit && /^\d+$/.test(limit) ? embedBaseUrl + '#limit=' + limit : embedBaseUrl;
     iframe.style.width = '100%';
     iframe.style.border = 'none';
     iframe.style.overflow = 'hidden';
