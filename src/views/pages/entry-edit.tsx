@@ -1,9 +1,10 @@
 import type { FC } from 'hono/jsx';
-import type { Entry } from '../../db/schema';
+import type { EntryWithSection, Section } from '../../db/schema';
 import { EntryForm } from '../components/entry-form';
 
 interface EntryEditProps {
-  entry?: Entry;
+  entry?: EntryWithSection;
+  sections?: Section[];
 }
 
 const AiStatusBadge: FC<{ status: string | null }> = ({ status }) => {
@@ -23,7 +24,7 @@ const AiStatusBadge: FC<{ status: string | null }> = ({ status }) => {
   }
 };
 
-export const EntryEdit: FC<EntryEditProps> = ({ entry }) => {
+export const EntryEdit: FC<EntryEditProps> = ({ entry, sections = [] }) => {
   const isEditing = !!entry;
   const pageTitle = isEditing ? 'Edit Entry' : 'New Entry';
   const action = isEditing ? `/admin/entries/${entry!.id}` : '/admin/entries';
@@ -59,7 +60,7 @@ export const EntryEdit: FC<EntryEditProps> = ({ entry }) => {
         </div>
       </div>
 
-      <EntryForm entry={entry} action={action} />
+      <EntryForm entry={entry} sections={sections} action={action} />
 
       {isEditing && entry!.raw_content && (
         <details class="ai-original-content">

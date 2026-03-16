@@ -23,6 +23,7 @@ import {
   listApiKeys,
   deleteApiKey,
 } from '../services/api-keys';
+import { listSections, getOrCreateSection } from '../services/sections';
 import { enqueueAISummarization } from '../services/ai';
 import { purgePublicCache } from '../services/cache';
 import type { Category, EntryStatus, ReleaseStatus } from '../db/schema';
@@ -53,8 +54,8 @@ api.post('/entries', async (c) => {
     const body = await c.req.json<{
       title?: string;
       content?: string;
-      version?: string;
       category?: Category;
+      section_name?: string;
       source?: string;
       source_metadata?: string;
     }>();
@@ -63,11 +64,17 @@ api.post('/entries', async (c) => {
       return c.json({ error: 'title is required' }, 400);
     }
 
+    let sectionId: number | null = null;
+    if (body.section_name?.trim()) {
+      const section = await getOrCreateSection(c.env.DB, body.section_name.trim());
+      sectionId = section.id;
+    }
+
     const entry = await createEntry(c.env.DB, {
       title: body.title,
       content: body.content,
-      version: body.version,
       category: body.category,
+      section_id: sectionId,
       source: body.source,
       source_metadata: body.source_metadata,
     });
@@ -153,6 +160,17 @@ api.post('/entries/:id/publish', async (c) => {
     return c.json(entry);
   } catch (err) {
     return c.json({ error: 'Failed to publish entry' }, 500);
+  }
+});
+
+// ─── Sections ─────────────────────────────────────────────
+
+api.get('/sections', async (c) => {
+  try {
+    const sections = await listSections(c.env.DB);
+    return c.json(sections);
+  } catch (err) {
+    return c.json({ error: 'Failed to list sections' }, 500);
   }
 });
 
@@ -331,7 +349,7 @@ api.post('/webhook', async (c) => {
         title: string;
         content?: string;
         category?: Category;
-        version?: string;
+        section_name?: string;
       }>;
     }>();
 
@@ -347,11 +365,18 @@ api.post('/webhook', async (c) => {
       if (!item.title) {
         return c.json({ error: 'Each entry must have a title' }, 400);
       }
+
+      let sectionId: number | null = null;
+      if (item.section_name?.trim()) {
+        const section = await getOrCreateSection(c.env.DB, item.section_name.trim());
+        sectionId = section.id;
+      }
+
       const entry = await createEntry(c.env.DB, {
         title: item.title,
         content: item.content,
         category: item.category,
-        version: item.version,
+        section_id: sectionId,
         source: 'api',
       });
 

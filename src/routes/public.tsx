@@ -5,14 +5,14 @@ import { listEntries } from '../services/entries';
 import { getAllSettings } from '../services/settings';
 import { generateRSS } from '../services/rss';
 import { getCachedResponse, cacheResponse } from '../services/cache';
-import type { Release, Entry } from '../db/schema';
+import type { Release, EntryWithSection } from '../db/schema';
 
 import { PublicLayout } from '../views/layouts/public-layout';
 import { EmbedLayout } from '../views/layouts/embed-layout';
 import { Changelog } from '../views/pages/changelog';
 
 interface ReleaseWithEntries extends Release {
-  entries: Entry[];
+  entries: EntryWithSection[];
 }
 
 // ─── Shared Data Fetching ──────────────────────────────
@@ -51,10 +51,11 @@ export async function fetchChangelogData(db: D1Database) {
   const faviconKey = settings['favicon_image_key'] || '';
   const logoUrl = logoKey ? `/images/${logoKey}` : null;
   const faviconUrl = faviconKey ? `/images/${faviconKey}` : null;
+  const entryGrouping = (settings['entry_grouping'] as 'category' | 'section') || 'category';
 
   const theme = settings['theme'] || 'herald';
 
-  return { projectName, projectDescription, releases, standaloneEntries, logoUrl, faviconUrl, theme };
+  return { projectName, projectDescription, releases, standaloneEntries, logoUrl, faviconUrl, entryGrouping, theme };
 }
 
 const pub = new Hono<{ Bindings: Bindings }>();
@@ -106,7 +107,7 @@ pub.get('/', async (c) => {
   const cached = await getCachedResponse(c.req.raw);
   if (cached) return cached;
 
-  const { projectName, projectDescription, releases, standaloneEntries, logoUrl, faviconUrl, theme } =
+  const { projectName, projectDescription, releases, standaloneEntries, logoUrl, faviconUrl, entryGrouping, theme } =
     await fetchChangelogData(c.env.DB);
 
   const response = await c.html(
@@ -123,6 +124,7 @@ pub.get('/', async (c) => {
         projectDescription={projectDescription}
         releases={releases}
         standaloneEntries={standaloneEntries}
+        entryGrouping={entryGrouping}
       />
     </PublicLayout>,
   );
@@ -139,7 +141,7 @@ pub.get('/embed', async (c) => {
   const cached = await getCachedResponse(c.req.raw);
   if (cached) return cached;
 
-  const { projectName, projectDescription, releases, standaloneEntries, logoUrl, faviconUrl, theme } =
+  const { projectName, projectDescription, releases, standaloneEntries, logoUrl, faviconUrl, entryGrouping, theme } =
     await fetchChangelogData(c.env.DB);
 
   const response = await c.html(
@@ -149,6 +151,7 @@ pub.get('/embed', async (c) => {
         projectDescription={projectDescription}
         releases={releases}
         standaloneEntries={standaloneEntries}
+        entryGrouping={entryGrouping}
       />
     </EmbedLayout>,
   );
@@ -165,7 +168,7 @@ pub.get('/embed.json', async (c) => {
   const cached = await getCachedResponse(c.req.raw);
   if (cached) return cached;
 
-  const { projectName, projectDescription, releases, standaloneEntries } =
+  const { projectName, projectDescription, releases, standaloneEntries, entryGrouping } =
     await fetchChangelogData(c.env.DB);
 
   const url = new URL(c.req.url);
@@ -175,6 +178,7 @@ pub.get('/embed.json', async (c) => {
     projectName,
     projectDescription,
     changelogUrl,
+    entryGrouping,
     releases: releases.map((r) => ({
       id: r.id,
       version: r.version,
@@ -186,6 +190,7 @@ pub.get('/embed.json', async (c) => {
         title: e.title,
         content: e.content,
         category: e.category,
+        section: e.section_name,
         published_at: e.published_at,
       })),
     })),
@@ -194,6 +199,7 @@ pub.get('/embed.json', async (c) => {
       title: e.title,
       content: e.content,
       category: e.category,
+      section: e.section_name,
       published_at: e.published_at,
     })),
   };
@@ -249,11 +255,13 @@ pub.get('/feed.xml', async (c) => {
   }
   const standaloneEntries = allPublishedEntries.filter((e) => !releaseEntryIds.has(e.id));
 
+  const entryGrouping = (settings['entry_grouping'] as 'category' | 'section') || 'category';
+
   const xml = generateRSS(releases, standaloneEntries, {
     name: projectName,
     description: projectDescription,
     url: baseUrl,
-  });
+  }, entryGrouping);
 
   const response = await c.body(xml, 200, {
     'Content-Type': 'application/xml; charset=utf-8',

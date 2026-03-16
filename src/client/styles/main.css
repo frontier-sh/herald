@@ -1197,9 +1197,12 @@ tbody tr:hover {
   color: var(--color-text-muted);
 }
 
-.entry-card-version {
-  font-family: var(--font-mono);
+.entry-card-section {
+  font-size: var(--text-xs);
   color: var(--color-text-secondary);
+  background: var(--color-bg-secondary);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
 }
 
 /* ============================================
@@ -2891,6 +2894,118 @@ tbody tr:hover {
     padding-left: var(--space-4);
     padding-right: var(--space-4);
   }
+}
+
+/* ============================================
+   Section Combo (autocomplete dropdown)
+   ============================================ */
+.section-combo {
+  position: relative;
+}
+
+.section-combo-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-top: none;
+  border-radius: 0 0 var(--radius) var(--radius);
+  max-height: 200px;
+  overflow-y: auto;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.section-combo-option {
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+  font-size: var(--text-sm);
+}
+
+.section-combo-option:hover,
+.section-combo-option.active {
+  background: var(--color-bg-secondary);
+}
+
+.section-combo-create {
+  color: var(--color-primary);
+  border-top: 1px solid var(--color-border);
+}
+
+/* ============================================
+   Radio Group (for settings)
+   ============================================ */
+.radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.radio-label {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+
+.radio-label:hover {
+  border-color: var(--color-primary);
+}
+
+.radio-label input[type="radio"] {
+  margin-top: 3px;
+  flex-shrink: 0;
+}
+
+.radio-label span:first-of-type {
+  font-weight: 500;
+}
+
+.radio-label .form-hint {
+  margin: 0;
+}
+
+/* ============================================
+   Section Headings (release edit + public)
+   ============================================ */
+.entry-selector-section-header {
+  padding: var(--space-2) var(--space-3);
+  margin-top: var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+  font-size: var(--text-sm);
+}
+
+.entry-selector-section-header:first-child {
+  margin-top: 0;
+}
+
+/* ============================================
+   Public Changelog: Section Grouping
+   ============================================ */
+.entry-section {
+  margin-bottom: var(--space-6);
+}
+
+.entry-section-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 0 0 var(--space-3) 0;
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.entry-group-badge-inline {
+  font-size: 0.6rem;
+  padding: 1px 6px;
+  border-radius: 9999px;
+  margin-right: var(--space-2);
+  vertical-align: middle;
 }
 
 /* ============================================

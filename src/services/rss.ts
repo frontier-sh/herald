@@ -1,8 +1,8 @@
-import type { Release, Entry } from '../db/schema';
+import type { Release, EntryWithSection } from '../db/schema';
 import { marked } from 'marked';
 
 interface ReleaseWithEntries extends Release {
-  entries: Entry[];
+  entries: EntryWithSection[];
 }
 
 function escapeXml(str: string): string {
@@ -23,7 +23,7 @@ function formatRssDate(dateStr: string): string {
   return new Date(dateStr).toUTCString();
 }
 
-function buildReleaseDescription(release: ReleaseWithEntries): string {
+function buildReleaseDescription(release: ReleaseWithEntries, grouping: 'category' | 'section'): string {
   let html = '';
 
   if (release.summary) {
@@ -31,25 +31,47 @@ function buildReleaseDescription(release: ReleaseWithEntries): string {
   }
 
   if (release.entries.length > 0) {
-    // Group entries by category
-    const grouped: Record<string, Entry[]> = {};
-    for (const entry of release.entries) {
-      if (!grouped[entry.category]) {
-        grouped[entry.category] = [];
+    if (grouping === 'section') {
+      // Group by section
+      const sectionMap = new Map<string | null, EntryWithSection[]>();
+      for (const entry of release.entries) {
+        const key = entry.section_name || null;
+        if (!sectionMap.has(key)) sectionMap.set(key, []);
+        sectionMap.get(key)!.push(entry);
       }
-      grouped[entry.category].push(entry);
-    }
 
-    for (const [category, entries] of Object.entries(grouped)) {
-      html += `<h3>${category.charAt(0).toUpperCase() + category.slice(1)}</h3><ul>`;
-      for (const entry of entries) {
-        html += `<li><strong>${escapeXml(entry.title)}</strong>`;
-        if (entry.content) {
-          html += renderMarkdown(entry.content);
+      for (const [sectionName, entries] of sectionMap) {
+        html += `<h3>${escapeXml(sectionName || 'Other')}</h3><ul>`;
+        for (const entry of entries) {
+          html += `<li><strong>${escapeXml(entry.title)}</strong>`;
+          if (entry.content) {
+            html += renderMarkdown(entry.content);
+          }
+          html += '</li>';
         }
-        html += '</li>';
+        html += '</ul>';
       }
-      html += '</ul>';
+    } else {
+      // Group by category (default)
+      const grouped: Record<string, EntryWithSection[]> = {};
+      for (const entry of release.entries) {
+        if (!grouped[entry.category]) {
+          grouped[entry.category] = [];
+        }
+        grouped[entry.category].push(entry);
+      }
+
+      for (const [category, entries] of Object.entries(grouped)) {
+        html += `<h3>${category.charAt(0).toUpperCase() + category.slice(1)}</h3><ul>`;
+        for (const entry of entries) {
+          html += `<li><strong>${escapeXml(entry.title)}</strong>`;
+          if (entry.content) {
+            html += renderMarkdown(entry.content);
+          }
+          html += '</li>';
+        }
+        html += '</ul>';
+      }
     }
   }
 
@@ -58,8 +80,9 @@ function buildReleaseDescription(release: ReleaseWithEntries): string {
 
 export function generateRSS(
   releases: ReleaseWithEntries[],
-  standaloneEntries: Entry[],
+  standaloneEntries: EntryWithSection[],
   settings: { name: string; description: string; url: string },
+  entryGrouping: 'category' | 'section' = 'category',
 ): string {
   const channelTitle = escapeXml(settings.name || 'Changelog');
   const channelDescription = escapeXml(settings.description || 'Latest updates and changes');
@@ -75,7 +98,7 @@ export function generateRSS(
         ? `${release.version} - ${release.title}`
         : release.version,
     );
-    const description = buildReleaseDescription(release);
+    const description = buildReleaseDescription(release, entryGrouping);
     const pubDate = formatRssDate(release.published_at || release.created_at);
     const guid = `${channelLink}/releases/${release.id}`;
 

@@ -1,10 +1,10 @@
 import type { FC } from 'hono/jsx';
-import type { Entry, Category, EntryStatus } from '../../db/schema';
+import type { EntryWithSection, Category, EntryStatus } from '../../db/schema';
 import { CATEGORIES } from '../../db/schema';
 import { EntryCard } from '../components/entry-card';
 
 interface EntriesListProps {
-  entries: Entry[];
+  entries: EntryWithSection[];
   statusFilter?: string;
   categoryFilter?: string;
 }

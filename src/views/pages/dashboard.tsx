@@ -1,12 +1,12 @@
 import type { FC } from 'hono/jsx';
-import type { Entry } from '../../db/schema';
+import type { EntryWithSection } from '../../db/schema';
 import { EntryCard } from '../components/entry-card';
 
 interface DashboardProps {
   totalEntries: number;
   publishedCount: number;
   draftCount: number;
-  recentEntries: Entry[];
+  recentEntries: EntryWithSection[];
 }
 
 export const Dashboard: FC<DashboardProps> = ({

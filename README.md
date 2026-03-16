@@ -12,6 +12,7 @@ A self-hosted changelog solution that makes it easy to track, manage, and publis
 - Custom logo and favicon via Settings
 - Image optimization via Cloudflare Images (auto WebP, resize)
 - Categorize changes (Added, Changed, Fixed, Removed, Deprecated, Security)
+- Organize entries by product area sections (e.g. Core, Desktop, API)
 - Group entries into versioned releases
 - AI-powered summarization via Cloudflare Workers AI
 - REST API + GitHub Action for CI/CD automation
@@ -107,9 +108,17 @@ curl -X POST https://herald.example.com/api/entries \
     "title": "Dark mode support",
     "content": "Added dark mode toggle in user preferences.",
     "category": "added",
-    "version": "1.2.0"
+    "section_name": "Desktop"
   }'
 ```
+
+### Sections
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/sections` | List all sections |
+
+Sections are created automatically when you assign a `section_name` to an entry. Use sections to group entries by product area (e.g. Core, Desktop, API).
 
 ### Releases
 
@@ -153,7 +162,7 @@ curl -X POST https://herald.example.com/api/webhook \
         "title": "Fix login timeout",
         "content": "Resolved session expiry issue causing premature logouts.",
         "category": "fixed",
-        "version": "1.1.1"
+        "section_name": "Core"
       }
     ]
   }'
@@ -232,6 +241,7 @@ Configurable via the admin panel or the `/api/settings` endpoint:
 | `project_name` | My Project | Displayed on the public changelog |
 | `project_description` | -- | Short description shown on the public page |
 | `auto_publish` | false | Automatically publish entries created via API/webhook |
+| `entry_grouping` | category | How entries are grouped on the public changelog (`category` or `section`) |
 | `ai_enabled` | false | Enable AI summarization of raw changelog content |
 | `ai_model` | `@cf/meta/llama-4-scout-17b-16e-instruct` | Cloudflare Workers AI model to use |
 

@@ -1,13 +1,14 @@
 import type { FC } from 'hono/jsx';
-import type { Entry } from '../../db/schema';
+import type { EntryWithSection, Section } from '../../db/schema';
 import { CATEGORIES } from '../../db/schema';
 
 interface EntryFormProps {
-  entry?: Entry;
+  entry?: EntryWithSection;
+  sections?: Section[];
   action: string;
 }
 
-export const EntryForm: FC<EntryFormProps> = ({ entry, action }) => {
+export const EntryForm: FC<EntryFormProps> = ({ entry, sections = [], action }) => {
   const isEditing = !!entry;
 
   return (
@@ -29,18 +30,31 @@ export const EntryForm: FC<EntryFormProps> = ({ entry, action }) => {
 
       <div class="form-row">
         <div class="form-group form-group-half">
-          <label for="version" class="form-label">
-            Version
+          <label for="section-input" class="form-label">
+            Section
           </label>
-          <input
-            type="text"
-            id="version"
-            name="version"
-            class="form-input"
-            placeholder="e.g. 1.2.0"
-            value={entry?.version ?? ''}
+          <div class="section-combo" id="section-combo">
+            <input
+              type="text"
+              id="section-input"
+              class="form-input"
+              placeholder="e.g. Core, Desktop, API"
+              value={entry?.section_name ?? ''}
+              autocomplete="off"
+            />
+            <input type="hidden" id="section-name" name="section_name" value={entry?.section_name ?? ''} />
+            <div class="section-combo-dropdown" id="section-dropdown" style="display: none;">
+              {/* Populated by JS */}
+            </div>
+          </div>
+          <p class="form-hint">Optional. Type to pick or create a section.</p>
+          <script
+            type="application/json"
+            id="section-data"
+            dangerouslySetInnerHTML={{
+              __html: JSON.stringify(sections.map((s) => s.name)).replace(/<\//g, '<\\/'),
+            }}
           />
-          <p class="form-hint">Optional. Semantic version for this entry.</p>
         </div>
 
         <div class="form-group form-group-half">

@@ -124,6 +124,46 @@ export const CustomisePage: FC<CustomisePageProps> = ({
         </form>
       </SettingsSection>
 
+      {/* Display Section */}
+      <SettingsSection
+        title="Display"
+        description="Control how entries are grouped on your public changelog."
+      >
+        <form method="post" action="/admin/settings/display">
+          <div class="form-group">
+            <label class="form-label">Group entries by</label>
+            <p class="form-hint">Choose how entries are organised within each release on your public changelog.</p>
+            <div class="radio-group">
+              <label class="radio-label">
+                <input
+                  type="radio"
+                  name="entry_grouping"
+                  value="category"
+                  checked={settings['entry_grouping'] !== 'section'}
+                />
+                <span>Category</span>
+                <span class="form-hint">Group by change type (Added, Fixed, Changed, etc.)</span>
+              </label>
+              <label class="radio-label">
+                <input
+                  type="radio"
+                  name="entry_grouping"
+                  value="section"
+                  checked={settings['entry_grouping'] === 'section'}
+                />
+                <span>Section</span>
+                <span class="form-hint">Group by product area (e.g. Core, Desktop, API)</span>
+              </label>
+            </div>
+          </div>
+          <div class="settings-section-footer">
+            <button type="submit" class="btn btn-primary">
+              Save Changes
+            </button>
+          </div>
+        </form>
+      </SettingsSection>
+
       {/* Branding Section */}
       <SettingsSection
         title="Branding"

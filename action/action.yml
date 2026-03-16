@@ -21,8 +21,8 @@ inputs:
   content:
     description: 'Entry content in Markdown (defaults to commit messages or release body)'
     required: false
-  version:
-    description: 'Version tag (defaults to release tag if available)'
+  section:
+    description: 'Section name for product area grouping (e.g. Core, Desktop, API)'
     required: false
 
 runs:
@@ -36,11 +36,10 @@ runs:
         HERALD_CATEGORY: ${{ inputs.category }}
         HERALD_TITLE: ${{ inputs.title }}
         HERALD_CONTENT: ${{ inputs.content }}
-        HERALD_VERSION: ${{ inputs.version }}
+        HERALD_SECTION: ${{ inputs.section }}
         EVENT_NAME: ${{ github.event_name }}
         RELEASE_NAME: ${{ github.event.release.name }}
         RELEASE_BODY: ${{ github.event.release.body }}
-        RELEASE_TAG: ${{ github.event.release.tag_name }}
         EVENT_BEFORE: ${{ github.event.before }}
         EVENT_AFTER: ${{ github.event.after }}
       run: |
@@ -49,7 +48,6 @@ runs:
           # For release events
           TITLE="${HERALD_TITLE:-$RELEASE_NAME}"
           CONTENT="${HERALD_CONTENT:-$RELEASE_BODY}"
-          VERSION="${HERALD_VERSION:-$RELEASE_TAG}"
         else
           # For push events - collect commit messages
           TITLE="${HERALD_TITLE:-$(git log --format='%s' -1)}"
@@ -58,7 +56,6 @@ runs:
           else
             CONTENT="$HERALD_CONTENT"
           fi
-          VERSION="${HERALD_VERSION:-}"
         fi
 
         # Fallback for empty title
@@ -67,12 +64,18 @@ runs:
         fi
 
         # Build JSON payload using jq for proper escaping
-        JSON=$(jq -n \
+        ENTRY=$(jq -n \
           --arg title "$TITLE" \
           --arg content "$CONTENT" \
           --arg category "$HERALD_CATEGORY" \
-          --arg version "$VERSION" \
-          '{entries: [{title: $title, content: $content, category: $category, version: $version}]}')
+          '{title: $title, content: $content, category: $category}')
+
+        # Add section_name if provided
+        if [ -n "$HERALD_SECTION" ]; then
+          ENTRY=$(echo "$ENTRY" | jq --arg section "$HERALD_SECTION" '. + {section_name: $section}')
+        fi
+
+        JSON=$(jq -n --argjson entry "$ENTRY" '{entries: [$entry]}')
 
         # Send to Herald webhook
         RESPONSE=$(curl -s -w "\n%{http_code}" \
