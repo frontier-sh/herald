@@ -1,9 +1,9 @@
 import type { FC } from 'hono/jsx';
-import type { Entry } from '../../db/schema';
+import type { EntryWithSection } from '../../db/schema';
 import { CategoryBadge } from './category-badge';
 
 interface EntryCardProps {
-  entry: Entry;
+  entry: EntryWithSection;
 }
 
 const AiStatusIndicator: FC<{ status: string | null }> = ({ status }) => {
@@ -47,8 +47,8 @@ export const EntryCard: FC<EntryCardProps> = ({ entry }) => {
         </div>
       </div>
       <div class="entry-card-meta">
-        {entry.version && (
-          <span class="entry-card-version">v{entry.version}</span>
+        {entry.section_name && (
+          <span class="entry-card-section">{entry.section_name}</span>
         )}
         <span class="entry-card-date">{dateStr}</span>
         <span class="entry-card-source">{entry.source}</span>

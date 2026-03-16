@@ -5,7 +5,7 @@ A composite GitHub Action that sends changelog entries to your [Herald](https://
 ## What it does
 
 - Automatically creates changelog entries in Herald when you push code or publish a release
-- For **release events**: uses the release name, body, and tag as the entry title, content, and version
+- For **release events**: uses the release name and body as the entry title and content
 - For **push events**: collects commit messages and uses the latest commit subject as the title
 - Sends entries to Herald's `/api/webhook` endpoint with proper authentication
 
@@ -18,7 +18,7 @@ A composite GitHub Action that sends changelog entries to your [Herald](https://
 | `category` | No | `changed` | Entry category: `added`, `changed`, `fixed`, `removed`, `deprecated`, `security` |
 | `title` | No | Auto-detected | Entry title. Defaults to release name or latest commit message |
 | `content` | No | Auto-detected | Entry content in Markdown. Defaults to release body or commit messages |
-| `version` | No | Auto-detected | Version tag. Defaults to release tag if available |
+| `section` | No | -- | Section name for product area grouping (e.g. Core, Desktop, API) |
 
 ## Usage
 
@@ -91,8 +91,8 @@ on:
           - removed
           - deprecated
           - security
-      version:
-        description: 'Version (optional)'
+      section:
+        description: 'Section (optional, e.g. Core, Desktop, API)'
         required: false
 
 jobs:
@@ -108,7 +108,7 @@ jobs:
           title: ${{ github.event.inputs.title }}
           content: ${{ github.event.inputs.content }}
           category: ${{ github.event.inputs.category }}
-          version: ${{ github.event.inputs.version }}
+          section: ${{ github.event.inputs.section }}
 ```
 
 ## Setup
@@ -124,7 +124,7 @@ jobs:
 
 The action determines event context automatically:
 
-- **Release events**: Extracts the release name, body (Markdown), and tag name
+- **Release events**: Extracts the release name and body (Markdown)
 - **Push events**: Uses `git log` to collect commit messages between the before/after SHAs
 - **Manual/other events**: Uses the values you provide via inputs
 

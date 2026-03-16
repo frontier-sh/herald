@@ -19,6 +19,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initDeleteKeyButtons();
   initCustomiseTabs();
   initBrandUploaders();
+  initSectionCombo();
 });
 
 /**
@@ -695,4 +696,120 @@ function showDropzoneError(zone: HTMLElement, message: string): void {
   errorEl.textContent = message;
   zone.appendChild(errorEl);
   setTimeout(() => errorEl.remove(), 3000);
+}
+
+/**
+ * Section combo: text input with dropdown for existing sections.
+ * Typing filters suggestions; non-matching input shows "Create 'X'" option.
+ */
+function initSectionCombo(): void {
+  const input = document.getElementById('section-input') as HTMLInputElement | null;
+  const hidden = document.getElementById('section-name') as HTMLInputElement | null;
+  const dropdown = document.getElementById('section-dropdown') as HTMLElement | null;
+  const dataEl = document.getElementById('section-data') as HTMLScriptElement | null;
+  if (!input || !hidden || !dropdown || !dataEl) return;
+
+  let sections: string[] = [];
+  try {
+    sections = JSON.parse(dataEl.textContent || '[]');
+  } catch { /* ignore */ }
+
+  let activeIndex = -1;
+
+  function renderDropdown(filter: string): void {
+    const lower = filter.toLowerCase();
+    const matches = filter
+      ? sections.filter((s) => s.toLowerCase().includes(lower))
+      : sections.slice();
+    const exactMatch = sections.some((s) => s.toLowerCase() === lower);
+
+    dropdown!.innerHTML = '';
+    activeIndex = -1;
+
+    if (matches.length === 0 && !filter) {
+      dropdown!.style.display = 'none';
+      return;
+    }
+
+    matches.forEach((name) => {
+      const item = document.createElement('div');
+      item.className = 'section-combo-option';
+      item.textContent = name;
+      item.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        selectSection(name);
+      });
+      dropdown!.appendChild(item);
+    });
+
+    if (filter && !exactMatch) {
+      const createItem = document.createElement('div');
+      createItem.className = 'section-combo-option section-combo-create';
+      createItem.innerHTML = `Create &lsquo;<strong>${escapeHtml(filter)}</strong>&rsquo;`;
+      createItem.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        selectSection(filter);
+      });
+      dropdown!.appendChild(createItem);
+    }
+
+    dropdown!.style.display = dropdown!.children.length > 0 ? '' : 'none';
+  }
+
+  function selectSection(name: string): void {
+    input!.value = name;
+    hidden!.value = name;
+    dropdown!.style.display = 'none';
+    // Add to local list if new
+    if (!sections.some((s) => s.toLowerCase() === name.toLowerCase())) {
+      sections.push(name);
+    }
+  }
+
+  function escapeHtml(str: string): string {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  input.addEventListener('focus', () => {
+    renderDropdown(input.value);
+  });
+
+  input.addEventListener('input', () => {
+    hidden.value = input.value;
+    renderDropdown(input.value);
+  });
+
+  input.addEventListener('blur', () => {
+    // Small delay to allow mousedown on option to fire first
+    setTimeout(() => {
+      dropdown.style.display = 'none';
+    }, 150);
+  });
+
+  input.addEventListener('keydown', (e) => {
+    const options = dropdown.querySelectorAll<HTMLElement>('.section-combo-option');
+    if (options.length === 0) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      activeIndex = Math.min(activeIndex + 1, options.length - 1);
+      options.forEach((opt, i) => opt.classList.toggle('active', i === activeIndex));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      activeIndex = Math.max(activeIndex - 1, 0);
+      options.forEach((opt, i) => opt.classList.toggle('active', i === activeIndex));
+    } else if (e.key === 'Enter' && activeIndex >= 0) {
+      e.preventDefault();
+      const selected = options[activeIndex];
+      if (selected.classList.contains('section-combo-create')) {
+        selectSection(input.value);
+      } else {
+        selectSection(selected.textContent || '');
+      }
+    } else if (e.key === 'Escape') {
+      dropdown.style.display = 'none';
+    }
+  });
 }

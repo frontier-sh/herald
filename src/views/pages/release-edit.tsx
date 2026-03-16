@@ -1,11 +1,11 @@
 import type { FC } from 'hono/jsx';
-import type { Release, Entry, Category } from '../../db/schema';
+import type { Release, EntryWithSection, Category } from '../../db/schema';
 import { CATEGORIES } from '../../db/schema';
 import { CategoryBadge } from '../components/category-badge';
 
 interface ReleaseEditProps {
-  release?: Release & { entries: Entry[] };
-  availableEntries?: Entry[];
+  release?: Release & { entries: EntryWithSection[] };
+  availableEntries?: EntryWithSection[];
 }
 
 export const ReleaseEdit: FC<ReleaseEditProps> = ({ release, availableEntries = [] }) => {
@@ -24,13 +24,50 @@ export const ReleaseEdit: FC<ReleaseEditProps> = ({ release, availableEntries = 
     }
   }
 
-  // Group entries by category
-  const entriesByCategory: Record<string, Entry[]> = {};
-  for (const cat of CATEGORIES) {
-    const catEntries = allEntries.filter((e) => e.category === cat);
-    if (catEntries.length > 0) {
-      entriesByCategory[cat] = catEntries;
+  // Group entries by section, then by category within each section
+  const hasSections = allEntries.some((e) => e.section_name);
+
+  interface SectionGroup {
+    sectionName: string | null;
+    entriesByCategory: Record<string, EntryWithSection[]>;
+  }
+
+  const sectionGroups: SectionGroup[] = [];
+
+  if (hasSections) {
+    const sectionMap = new Map<string | null, EntryWithSection[]>();
+    for (const entry of allEntries) {
+      const key = entry.section_name || null;
+      if (!sectionMap.has(key)) sectionMap.set(key, []);
+      sectionMap.get(key)!.push(entry);
     }
+    // Named sections first, then ungrouped
+    for (const [sectionName, entries] of sectionMap) {
+      if (sectionName === null) continue;
+      const byCategory: Record<string, EntryWithSection[]> = {};
+      for (const cat of CATEGORIES) {
+        const catEntries = entries.filter((e) => e.category === cat);
+        if (catEntries.length > 0) byCategory[cat] = catEntries;
+      }
+      sectionGroups.push({ sectionName, entriesByCategory: byCategory });
+    }
+    const ungrouped = sectionMap.get(null);
+    if (ungrouped) {
+      const byCategory: Record<string, EntryWithSection[]> = {};
+      for (const cat of CATEGORIES) {
+        const catEntries = ungrouped.filter((e) => e.category === cat);
+        if (catEntries.length > 0) byCategory[cat] = catEntries;
+      }
+      sectionGroups.push({ sectionName: null, entriesByCategory: byCategory });
+    }
+  } else {
+    // No sections — just group by category (legacy behavior)
+    const byCategory: Record<string, EntryWithSection[]> = {};
+    for (const cat of CATEGORIES) {
+      const catEntries = allEntries.filter((e) => e.category === cat);
+      if (catEntries.length > 0) byCategory[cat] = catEntries;
+    }
+    sectionGroups.push({ sectionName: null, entriesByCategory: byCategory });
   }
 
   // Build ordered list of currently selected entry IDs for sort
@@ -106,28 +143,45 @@ export const ReleaseEdit: FC<ReleaseEditProps> = ({ release, availableEntries = 
           <label class="form-label">Entries in this Release</label>
           <p class="form-hint">Select entries to include. Checked entries will be part of this release.</p>
 
-          {Object.keys(entriesByCategory).length > 0 ? (
+          {sectionGroups.some((g) => Object.keys(g.entriesByCategory).length > 0) ? (
             <div class="entry-selector" id="entry-selector">
-              {Object.entries(entriesByCategory).map(([category, entries]) => (
-                <div class="entry-selector-group">
-                  <div class="entry-selector-group-header">
-                    <CategoryBadge category={category as Category} />
-                    <span class="text-sm text-muted">({entries.length})</span>
-                  </div>
-                  <div class="entry-selector-items">
-                    {entries.map((entry) => (
-                      <label class="entry-selector-item" data-entry-id={entry.id}>
-                        <input
-                          type="checkbox"
-                          name="entry_ids"
-                          value={String(entry.id)}
-                          checked={releaseEntryIds.has(entry.id)}
-                        />
-                        <span class="entry-selector-title">{entry.title}</span>
-                        <CategoryBadge category={entry.category} />
-                      </label>
-                    ))}
-                  </div>
+              {sectionGroups.map((group) => (
+                <div class={group.sectionName ? 'entry-selector-section' : ''}>
+                  {group.sectionName && (
+                    <div class="entry-selector-section-header">
+                      <strong>{group.sectionName}</strong>
+                    </div>
+                  )}
+                  {!group.sectionName && hasSections && (
+                    <div class="entry-selector-section-header">
+                      <strong class="text-muted">Ungrouped</strong>
+                    </div>
+                  )}
+                  {Object.entries(group.entriesByCategory).map(([category, entries]) => (
+                    <div class="entry-selector-group">
+                      <div class="entry-selector-group-header">
+                        <CategoryBadge category={category as Category} />
+                        <span class="text-sm text-muted">({entries.length})</span>
+                      </div>
+                      <div class="entry-selector-items">
+                        {entries.map((entry) => (
+                          <label class="entry-selector-item" data-entry-id={entry.id}>
+                            <input
+                              type="checkbox"
+                              name="entry_ids"
+                              value={String(entry.id)}
+                              checked={releaseEntryIds.has(entry.id)}
+                            />
+                            <span class="entry-selector-title">{entry.title}</span>
+                            <CategoryBadge category={entry.category} />
+                            {entry.section_name && (
+                              <span class="text-sm text-muted">({entry.section_name})</span>
+                            )}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               ))}
             </div>

@@ -1,17 +1,18 @@
 import type { FC } from 'hono/jsx';
-import type { Release, Entry, Category } from '../../db/schema';
+import type { Release, EntryWithSection, Category } from '../../db/schema';
 import { CATEGORIES } from '../../db/schema';
 import { marked } from 'marked';
 
 interface ReleaseWithEntries extends Release {
-  entries: Entry[];
+  entries: EntryWithSection[];
 }
 
 interface ChangelogProps {
   projectName: string;
   projectDescription: string;
   releases: ReleaseWithEntries[];
-  standaloneEntries: Entry[];
+  standaloneEntries: EntryWithSection[];
+  entryGrouping?: 'category' | 'section';
 }
 
 const CATEGORY_COLORS: Record<Category, { bg: string; text: string }> = {
@@ -28,8 +29,8 @@ function renderMarkdown(md: string): string {
   return marked.parse(md, { async: false }) as string;
 }
 
-function groupEntriesByCategory(entries: Entry[]): Record<string, Entry[]> {
-  const grouped: Record<string, Entry[]> = {};
+function groupEntriesByCategory(entries: EntryWithSection[]): Record<string, EntryWithSection[]> {
+  const grouped: Record<string, EntryWithSection[]> = {};
   for (const entry of entries) {
     if (!grouped[entry.category]) {
       grouped[entry.category] = [];
@@ -37,6 +38,16 @@ function groupEntriesByCategory(entries: Entry[]): Record<string, Entry[]> {
     grouped[entry.category].push(entry);
   }
   return grouped;
+}
+
+function groupEntriesBySection(entries: EntryWithSection[]): Map<string | null, EntryWithSection[]> {
+  const map = new Map<string | null, EntryWithSection[]>();
+  for (const entry of entries) {
+    const key = entry.section_name || null;
+    if (!map.has(key)) map.set(key, []);
+    map.get(key)!.push(entry);
+  }
+  return map;
 }
 
 function formatDate(dateStr: string): string {
@@ -48,7 +59,7 @@ function formatDate(dateStr: string): string {
 }
 
 // Collect all unique categories across releases and standalone entries
-function collectCategories(releases: ReleaseWithEntries[], standaloneEntries: Entry[]): Category[] {
+function collectCategories(releases: ReleaseWithEntries[], standaloneEntries: EntryWithSection[]): Category[] {
   const cats = new Set<Category>();
   for (const r of releases) {
     for (const e of r.entries) {
@@ -62,14 +73,95 @@ function collectCategories(releases: ReleaseWithEntries[], standaloneEntries: En
   return CATEGORIES.filter((c) => cats.has(c));
 }
 
+const CategoryGroupEntries: FC<{ entries: EntryWithSection[]; category: Category }> = ({ entries, category }) => (
+  <div class="entry-group" data-category={category}>
+    <h3 class="entry-group-title">
+      <span
+        class="entry-group-badge"
+        style={`background-color: ${CATEGORY_COLORS[category].bg}; color: ${CATEGORY_COLORS[category].text};`}
+      >
+        {category.charAt(0).toUpperCase() + category.slice(1)}
+      </span>
+    </h3>
+    <ul class="entry-group-list">
+      {entries.map((entry) => {
+        const contentHtml = renderMarkdown(entry.content || '');
+        return (
+          <li class="entry-group-item">
+            <strong class="entry-group-item-title">{entry.title}</strong>
+            {contentHtml && (
+              <div class="prose entry-group-item-content" dangerouslySetInnerHTML={{ __html: contentHtml }} />
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  </div>
+);
+
+const EntriesByCategoryView: FC<{ entries: EntryWithSection[] }> = ({ entries }) => {
+  const grouped = groupEntriesByCategory(entries);
+  return (
+    <div class="timeline-entries">
+      {CATEGORIES.filter((cat) => grouped[cat]).map((cat) => (
+        <CategoryGroupEntries entries={grouped[cat]} category={cat} />
+      ))}
+    </div>
+  );
+};
+
+const EntriesBySectionView: FC<{ entries: EntryWithSection[] }> = ({ entries }) => {
+  const sectionMap = groupEntriesBySection(entries);
+  const sectionEntries: Array<[string | null, EntryWithSection[]]> = [];
+
+  // Named sections first
+  for (const [name, sectionEnts] of sectionMap) {
+    if (name !== null) sectionEntries.push([name, sectionEnts]);
+  }
+  // Ungrouped last
+  const ungrouped = sectionMap.get(null);
+  if (ungrouped) sectionEntries.push([null, ungrouped]);
+
+  return (
+    <div class="timeline-entries">
+      {sectionEntries.map(([sectionName, sectionEnts]) => (
+        <div class="entry-section" data-section={sectionName || 'other'}>
+          <h3 class="entry-section-title">{sectionName || 'Other'}</h3>
+          <ul class="entry-group-list">
+            {sectionEnts.map((entry) => {
+              const contentHtml = renderMarkdown(entry.content || '');
+              return (
+                <li class="entry-group-item" data-category={entry.category}>
+                  <span
+                    class="entry-group-badge entry-group-badge-inline"
+                    style={`background-color: ${CATEGORY_COLORS[entry.category].bg}; color: ${CATEGORY_COLORS[entry.category].text};`}
+                  >
+                    {entry.category.charAt(0).toUpperCase() + entry.category.slice(1)}
+                  </span>
+                  <strong class="entry-group-item-title">{entry.title}</strong>
+                  {contentHtml && (
+                    <div class="prose entry-group-item-content" dangerouslySetInnerHTML={{ __html: contentHtml }} />
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ))}
+    </div>
+  );
+};
+
 export const Changelog: FC<ChangelogProps> = ({
   projectName,
   projectDescription,
   releases,
   standaloneEntries,
+  entryGrouping = 'category',
 }) => {
   const hasContent = releases.length > 0 || standaloneEntries.length > 0;
   const allCategories = collectCategories(releases, standaloneEntries);
+  const useSection = entryGrouping === 'section';
 
   return (
     <div class="changelog">
@@ -80,7 +172,7 @@ export const Changelog: FC<ChangelogProps> = ({
         )}
       </div>
 
-      {hasContent && allCategories.length > 0 && (
+      {hasContent && !useSection && allCategories.length > 0 && (
         <div class="category-filters" id="category-filters">
           <button class="category-pill active" data-category="all">All</button>
           {allCategories.map((cat) => {
@@ -102,7 +194,6 @@ export const Changelog: FC<ChangelogProps> = ({
         <div class="changelog-timeline">
           <div class="timeline">
             {releases.map((release) => {
-              const grouped = groupEntriesByCategory(release.entries);
               const summaryHtml = renderMarkdown(release.summary || '');
               const releaseDate = release.published_at || release.created_at;
 
@@ -120,33 +211,11 @@ export const Changelog: FC<ChangelogProps> = ({
                     {summaryHtml && (
                       <div class="prose timeline-summary" dangerouslySetInnerHTML={{ __html: summaryHtml }} />
                     )}
-                    <div class="timeline-entries">
-                      {CATEGORIES.filter((cat) => grouped[cat]).map((cat) => (
-                        <div class="entry-group" data-category={cat}>
-                          <h3 class="entry-group-title">
-                            <span
-                              class="entry-group-badge"
-                              style={`background-color: ${CATEGORY_COLORS[cat].bg}; color: ${CATEGORY_COLORS[cat].text};`}
-                            >
-                              {cat.charAt(0).toUpperCase() + cat.slice(1)}
-                            </span>
-                          </h3>
-                          <ul class="entry-group-list">
-                            {grouped[cat].map((entry) => {
-                              const contentHtml = renderMarkdown(entry.content || '');
-                              return (
-                                <li class="entry-group-item">
-                                  <strong class="entry-group-item-title">{entry.title}</strong>
-                                  {contentHtml && (
-                                    <div class="prose entry-group-item-content" dangerouslySetInnerHTML={{ __html: contentHtml }} />
-                                  )}
-                                </li>
-                              );
-                            })}
-                          </ul>
-                        </div>
-                      ))}
-                    </div>
+                    {useSection ? (
+                      <EntriesBySectionView entries={release.entries} />
+                    ) : (
+                      <EntriesByCategoryView entries={release.entries} />
+                    )}
                   </div>
                 </div>
               );
@@ -159,36 +228,11 @@ export const Changelog: FC<ChangelogProps> = ({
                   <div class="timeline-header">
                     <span class="timeline-version">Other Updates</span>
                   </div>
-                  <div class="timeline-entries">
-                    {(() => {
-                      const grouped = groupEntriesByCategory(standaloneEntries);
-                      return CATEGORIES.filter((cat) => grouped[cat]).map((cat) => (
-                        <div class="entry-group" data-category={cat}>
-                          <h3 class="entry-group-title">
-                            <span
-                              class="entry-group-badge"
-                              style={`background-color: ${CATEGORY_COLORS[cat].bg}; color: ${CATEGORY_COLORS[cat].text};`}
-                            >
-                              {cat.charAt(0).toUpperCase() + cat.slice(1)}
-                            </span>
-                          </h3>
-                          <ul class="entry-group-list">
-                            {grouped[cat].map((entry) => {
-                              const contentHtml = renderMarkdown(entry.content || '');
-                              return (
-                                <li class="entry-group-item">
-                                  <strong class="entry-group-item-title">{entry.title}</strong>
-                                  {contentHtml && (
-                                    <div class="prose entry-group-item-content" dangerouslySetInnerHTML={{ __html: contentHtml }} />
-                                  )}
-                                </li>
-                              );
-                            })}
-                          </ul>
-                        </div>
-                      ));
-                    })()}
-                  </div>
+                  {useSection ? (
+                    <EntriesBySectionView entries={standaloneEntries} />
+                  ) : (
+                    <EntriesByCategoryView entries={standaloneEntries} />
+                  )}
                 </div>
               </div>
             )}

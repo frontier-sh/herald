@@ -27,12 +27,19 @@ export interface Project {
   updated_at: string;
 }
 
+export interface Section {
+  id: number;
+  name: string;
+  sort_order: number;
+  created_at: string;
+}
+
 export interface Entry {
   id: number;
-  version: string | null;
   title: string;
   content: string;
   category: Category;
+  section_id: number | null;
   status: EntryStatus;
   published_at: string | null;
   created_at: string;
@@ -41,6 +48,10 @@ export interface Entry {
   source_metadata: string | null;
   ai_status: AiStatus;
   raw_content: string | null;
+}
+
+export interface EntryWithSection extends Entry {
+  section_name: string | null;
 }
 
 export interface Release {

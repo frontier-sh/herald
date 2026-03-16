@@ -24,6 +24,7 @@ import { enqueueAISummarization, extractAIText } from '../services/ai';
 import { resolveModelId } from '../services/models';
 import { purgePublicCache, purgeImageCache } from '../services/cache';
 import { uploadContentImage, uploadBrandImage, deleteImage } from '../services/images';
+import { listSections, getOrCreateSection } from '../services/sections';
 import type { Category, EntryStatus, ReleaseStatus } from '../db/schema';
 
 import { AdminLayout } from '../views/layouts/admin-layout';
@@ -130,11 +131,12 @@ admin.get('/entries', async (c) => {
 
 // ─── New Entry Form ──────────────────────────────────────
 
-admin.get('/entries/new', (c) => {
+admin.get('/entries/new', async (c) => {
   const flash = getFlash(c);
+  const sections = await listSections(c.env.DB);
   return c.html(
     <AdminLayout title="New Entry" currentPath="/admin/entries" flash={flash} githubUser={c.get('githubUser')}>
-      <EntryEdit />
+      <EntryEdit sections={sections} />
     </AdminLayout>,
   );
 });
@@ -145,7 +147,7 @@ admin.post('/entries', async (c) => {
   const body = await c.req.parseBody();
   const title = body['title'] as string;
   const content = (body['content'] as string) || (body['content_raw'] as string) || '';
-  const version = (body['version'] as string) || undefined;
+  const sectionName = ((body['section_name'] as string) || '').trim();
   const category = (body['category'] as Category) || 'added';
   const status = body['status'] as string;
 
@@ -155,11 +157,17 @@ admin.post('/entries', async (c) => {
   }
 
   try {
+    let sectionId: number | null = null;
+    if (sectionName) {
+      const section = await getOrCreateSection(c.env.DB, sectionName);
+      sectionId = section.id;
+    }
+
     const entry = await createEntry(c.env.DB, {
       title,
       content,
-      version,
       category,
+      section_id: sectionId,
     });
 
     // If publish was requested, publish immediately
@@ -201,9 +209,11 @@ admin.get('/entries/:id', async (c) => {
     return c.redirect('/admin/entries');
   }
 
+  const sections = await listSections(c.env.DB);
+
   return c.html(
     <AdminLayout title={`Edit: ${entry.title}`} currentPath="/admin/entries" flash={flash} githubUser={c.get('githubUser')}>
-      <EntryEdit entry={entry} />
+      <EntryEdit entry={entry} sections={sections} />
     </AdminLayout>,
   );
 });
@@ -220,7 +230,7 @@ admin.post('/entries/:id', async (c) => {
   const body = await c.req.parseBody();
   const title = body['title'] as string;
   const content = (body['content'] as string) || (body['content_raw'] as string) || '';
-  const version = (body['version'] as string) || null;
+  const sectionName = ((body['section_name'] as string) || '').trim();
   const category = (body['category'] as Category) || 'added';
   const status = body['status'] as string;
 
@@ -230,11 +240,17 @@ admin.post('/entries/:id', async (c) => {
   }
 
   try {
+    let sectionId: number | null = null;
+    if (sectionName) {
+      const section = await getOrCreateSection(c.env.DB, sectionName);
+      sectionId = section.id;
+    }
+
     const updateData: Record<string, unknown> = {
       title,
       content,
-      version,
       category,
+      section_id: sectionId,
     };
 
     if (status === 'published') {
@@ -618,6 +634,22 @@ admin.post('/settings/general', async (c) => {
     setFlash(c, 'success', 'General settings saved successfully.');
   } catch (err) {
     setFlash(c, 'error', 'Failed to save general settings.');
+  }
+
+  return c.redirect('/admin/customise');
+});
+
+// ─── Settings: Display ──────────────────────────────────
+
+admin.post('/settings/display', async (c) => {
+  const body = await c.req.parseBody();
+  const entryGrouping = body['entry_grouping'] === 'section' ? 'section' : 'category';
+
+  try {
+    await setSetting(c.env.DB, 'entry_grouping', entryGrouping);
+    setFlash(c, 'success', 'Display settings saved successfully.');
+  } catch (err) {
+    setFlash(c, 'error', 'Failed to save display settings.');
   }
 
   return c.redirect('/admin/customise');

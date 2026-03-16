@@ -1,15 +1,16 @@
-import type { Entry, Category, EntryStatus } from '../db/schema';
+import type { Entry, EntryWithSection, Category, EntryStatus } from '../db/schema';
 
 export interface ListEntriesFilters {
   status?: EntryStatus;
   category?: Category;
+  section_id?: number;
 }
 
 export interface CreateEntryData {
   title: string;
   content?: string;
-  version?: string;
   category?: Category;
+  section_id?: number | null;
   source?: string;
   source_metadata?: string;
 }
@@ -17,75 +18,84 @@ export interface CreateEntryData {
 export async function listEntries(
   db: D1Database,
   filters?: ListEntriesFilters,
-): Promise<Entry[]> {
+): Promise<EntryWithSection[]> {
   const conditions: string[] = [];
   const params: unknown[] = [];
 
   if (filters?.status) {
-    conditions.push('status = ?');
+    conditions.push('e.status = ?');
     params.push(filters.status);
   }
   if (filters?.category) {
-    conditions.push('category = ?');
+    conditions.push('e.category = ?');
     params.push(filters.category);
   }
+  if (filters?.section_id) {
+    conditions.push('e.section_id = ?');
+    params.push(filters.section_id);
+  }
 
-  let sql = 'SELECT * FROM entries';
+  let sql = 'SELECT e.*, s.name AS section_name FROM entries e LEFT JOIN sections s ON e.section_id = s.id';
   if (conditions.length > 0) {
     sql += ' WHERE ' + conditions.join(' AND ');
   }
-  sql += ' ORDER BY created_at DESC';
+  sql += ' ORDER BY e.created_at DESC';
 
-  const result = await db.prepare(sql).bind(...params).all<Entry>();
+  const result = await db.prepare(sql).bind(...params).all<EntryWithSection>();
   return result.results;
 }
 
 export async function getEntry(
   db: D1Database,
   id: number,
-): Promise<Entry | null> {
+): Promise<EntryWithSection | null> {
   const result = await db
-    .prepare('SELECT * FROM entries WHERE id = ?')
+    .prepare('SELECT e.*, s.name AS section_name FROM entries e LEFT JOIN sections s ON e.section_id = s.id WHERE e.id = ?')
     .bind(id)
-    .first<Entry>();
+    .first<EntryWithSection>();
   return result ?? null;
 }
 
 export async function createEntry(
   db: D1Database,
   data: CreateEntryData,
-): Promise<Entry> {
+): Promise<EntryWithSection> {
   const result = await db
     .prepare(
-      `INSERT INTO entries (title, content, version, category, source, source_metadata)
+      `INSERT INTO entries (title, content, category, section_id, source, source_metadata)
        VALUES (?, ?, ?, ?, ?, ?)
        RETURNING *`,
     )
     .bind(
       data.title,
       data.content ?? '',
-      data.version ?? null,
       data.category ?? 'added',
+      data.section_id ?? null,
       data.source ?? 'manual',
       data.source_metadata ?? null,
     )
     .first<Entry>();
-  return result!;
+
+  // Re-fetch with section name joined
+  if (result?.section_id) {
+    return (await getEntry(db, result.id))!;
+  }
+  return { ...result!, section_name: null };
 }
 
 export async function updateEntry(
   db: D1Database,
   id: number,
   data: Partial<Entry>,
-): Promise<Entry | null> {
+): Promise<EntryWithSection | null> {
   const fields: string[] = [];
   const params: unknown[] = [];
 
   const allowedFields = [
     'title',
     'content',
-    'version',
     'category',
+    'section_id',
     'status',
     'source',
     'source_metadata',
@@ -105,13 +115,13 @@ export async function updateEntry(
   fields.push("updated_at = datetime('now')");
   params.push(id);
 
-  const result = await db
+  await db
     .prepare(
-      `UPDATE entries SET ${fields.join(', ')} WHERE id = ? RETURNING *`,
+      `UPDATE entries SET ${fields.join(', ')} WHERE id = ?`,
     )
     .bind(...params)
-    .first<Entry>();
-  return result ?? null;
+    .run();
+  return getEntry(db, id);
 }
 
 export async function deleteEntry(
@@ -128,22 +138,22 @@ export async function deleteEntry(
 export async function publishEntry(
   db: D1Database,
   id: number,
-): Promise<Entry | null> {
-  const result = await db
+): Promise<EntryWithSection | null> {
+  await db
     .prepare(
       `UPDATE entries SET status = 'published', published_at = datetime('now'), updated_at = datetime('now')
-       WHERE id = ? RETURNING *`,
+       WHERE id = ?`,
     )
     .bind(id)
-    .first<Entry>();
-  return result ?? null;
+    .run();
+  return getEntry(db, id);
 }
 
-export async function getDraftEntries(db: D1Database): Promise<Entry[]> {
+export async function getDraftEntries(db: D1Database): Promise<EntryWithSection[]> {
   const result = await db
     .prepare(
-      "SELECT * FROM entries WHERE status = 'draft' ORDER BY created_at DESC",
+      "SELECT e.*, s.name AS section_name FROM entries e LEFT JOIN sections s ON e.section_id = s.id WHERE e.status = 'draft' ORDER BY e.created_at DESC",
     )
-    .all<Entry>();
+    .all<EntryWithSection>();
   return result.results;
 }

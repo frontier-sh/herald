@@ -1,4 +1,4 @@
-import type { Release, ReleaseStatus, Entry } from '../db/schema';
+import type { Release, ReleaseStatus, EntryWithSection } from '../db/schema';
 
 export interface ListReleasesFilters {
   status?: ReleaseStatus;
@@ -18,7 +18,7 @@ export interface UpdateReleaseData {
 }
 
 export interface ReleaseWithEntries extends Release {
-  entries: Entry[];
+  entries: EntryWithSection[];
   entry_count?: number;
 }
 
@@ -64,13 +64,14 @@ export async function getRelease(
 
   const entries = await db
     .prepare(
-      `SELECT e.* FROM entries e
+      `SELECT e.*, s.name AS section_name FROM entries e
        INNER JOIN release_entries re ON re.entry_id = e.id
+       LEFT JOIN sections s ON e.section_id = s.id
        WHERE re.release_id = ?
        ORDER BY re.sort_order ASC`,
     )
     .bind(id)
-    .all<Entry>();
+    .all<EntryWithSection>();
 
   return { ...release, entries: entries.results };
 }
