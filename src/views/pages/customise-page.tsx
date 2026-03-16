@@ -1,9 +1,20 @@
 import type { FC } from 'hono/jsx';
+import type { Release, Entry } from '../../db/schema';
 import { SettingsSection } from '../components/settings-form';
+import { Changelog } from './changelog';
+
+interface ReleaseWithEntries extends Release {
+  entries: Entry[];
+}
 
 interface CustomisePageProps {
   settings: Record<string, string>;
   baseUrl: string;
+  previewReleases: ReleaseWithEntries[];
+  previewStandaloneEntries: Entry[];
+  previewProjectName: string;
+  previewProjectDescription: string;
+  previewLogoUrl: string | null;
 }
 
 const UploadIcon = () => (
@@ -12,9 +23,44 @@ const UploadIcon = () => (
   </svg>
 );
 
+const THEMES = [
+  {
+    id: 'herald',
+    name: 'Herald',
+    description: 'Clean timeline with colorful badges',
+    previewBg: '#FAFAF9',
+    previewAccent: '#4F46E5',
+    previewText: '#1C1917',
+    previewBadges: ['#D1FAE5', '#DBEAFE', '#EDE9FE'],
+  },
+  {
+    id: 'opencode',
+    name: 'OpenCode',
+    description: 'Dark monospace developer style',
+    previewBg: '#0a0a0a',
+    previewAccent: '#e5e5e5',
+    previewText: '#e5e5e5',
+    previewBadges: ['#1a1a1a', '#1a1a1a', '#1a1a1a'],
+  },
+  {
+    id: 'notion',
+    name: 'Notion',
+    description: 'Minimal editorial layout',
+    previewBg: '#FFFFFF',
+    previewAccent: '#111111',
+    previewText: '#37352F',
+    previewBadges: ['#E8F5E9', '#E3F2FD', '#F3E8FD'],
+  },
+];
+
 export const CustomisePage: FC<CustomisePageProps> = ({
   settings,
   baseUrl,
+  previewReleases,
+  previewStandaloneEntries,
+  previewProjectName,
+  previewProjectDescription,
+  previewLogoUrl,
 }) => {
   const projectName = settings['project_name'] ?? '';
   const projectDescription = settings['project_description'] ?? '';
@@ -22,6 +68,7 @@ export const CustomisePage: FC<CustomisePageProps> = ({
   const faviconKey = settings['favicon_image_key'] ?? '';
   const logoUrl = logoKey ? `/images/${logoKey}` : null;
   const faviconUrl = faviconKey ? `/images/${faviconKey}` : null;
+  const currentTheme = settings['theme'] || 'herald';
 
   const changelogUrl = baseUrl;
   const embedCode = `<script src="${baseUrl}/embed.js"></script>`;
@@ -80,7 +127,7 @@ export const CustomisePage: FC<CustomisePageProps> = ({
       {/* Branding Section */}
       <SettingsSection
         title="Branding"
-        description="Upload a logo and favicon for your public changelog."
+        description="Customise the look and feel of your public changelog."
       >
         <div class="form-group">
           <label class="form-label">Logo</label>
@@ -132,6 +179,69 @@ export const CustomisePage: FC<CustomisePageProps> = ({
               <button type="submit" class="btn btn-secondary btn-sm">Remove</button>
             </form>
           )}
+        </div>
+
+        {/* Theme Picker */}
+        <div class="form-group">
+          <label class="form-label">Theme</label>
+          <p class="form-hint">Choose a visual style for your public changelog.</p>
+          <div class="theme-picker">
+            {THEMES.map((theme) => (
+              <label class={`theme-card${currentTheme === theme.id ? ' active' : ''}`}>
+                <input
+                  type="radio"
+                  name="theme"
+                  value={theme.id}
+                  data-theme-radio
+                  checked={currentTheme === theme.id}
+                />
+                <div
+                  class="theme-card-preview"
+                  style={`background-color: ${theme.previewBg};`}
+                >
+                  <div class="theme-card-preview-lines">
+                    <div class="theme-card-preview-title" style={`background-color: ${theme.previewText};`}></div>
+                    <div class="theme-card-preview-subtitle" style={`background-color: ${theme.previewText}; opacity: 0.3;`}></div>
+                    <div class="theme-card-preview-badges">
+                      {theme.previewBadges.map((color) => (
+                        <div class="theme-card-preview-badge" style={`background-color: ${color};`}></div>
+                      ))}
+                    </div>
+                    <div class="theme-card-preview-line" style={`background-color: ${theme.previewText}; opacity: 0.15;`}></div>
+                    <div class="theme-card-preview-line" style={`background-color: ${theme.previewText}; opacity: 0.1;`}></div>
+                  </div>
+                </div>
+                <div class="theme-card-name">{theme.name}</div>
+                <div class="theme-card-description">{theme.description}</div>
+              </label>
+            ))}
+          </div>
+        </div>
+
+        {/* Live Preview */}
+        <div class="form-group">
+          <label class="form-label">Preview</label>
+          <div class="theme-preview-container" data-theme-preview>
+            <div class="theme-preview-frame" data-theme={currentTheme}>
+              <div class="theme-preview-header">
+                <a href="#" class="theme-preview-brand">
+                  {previewLogoUrl ? (
+                    <img src={previewLogoUrl} alt={previewProjectName} class="theme-preview-brand-logo" />
+                  ) : (
+                    previewProjectName
+                  )}
+                </a>
+              </div>
+              <div class="theme-preview-content">
+                <Changelog
+                  projectName={previewProjectName}
+                  projectDescription={previewProjectDescription}
+                  releases={previewReleases}
+                  standaloneEntries={previewStandaloneEntries}
+                />
+              </div>
+            </div>
+          </div>
         </div>
       </SettingsSection>
 

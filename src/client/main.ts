@@ -19,6 +19,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initDeleteKeyButtons();
   initCustomiseTabs();
   initBrandUploaders();
+  initThemePicker();
 });
 
 /**
@@ -695,4 +696,35 @@ function showDropzoneError(zone: HTMLElement, message: string): void {
   errorEl.textContent = message;
   zone.appendChild(errorEl);
   setTimeout(() => errorEl.remove(), 3000);
+}
+
+/**
+ * Theme picker: live preview switching and auto-save.
+ */
+function initThemePicker(): void {
+  const radios = document.querySelectorAll<HTMLInputElement>('[data-theme-radio]');
+  const previewFrame = document.querySelector<HTMLElement>('[data-theme-preview] .theme-preview-frame');
+  if (radios.length === 0 || !previewFrame) return;
+
+  radios.forEach((radio) => {
+    radio.addEventListener('change', () => {
+      // Update preview data-theme attribute instantly
+      previewFrame.setAttribute('data-theme', radio.value);
+
+      // Update active card styling
+      document.querySelectorAll('.theme-card').forEach((card) => {
+        card.classList.remove('active');
+      });
+      const parentCard = radio.closest('.theme-card');
+      if (parentCard) parentCard.classList.add('active');
+
+      // Auto-save via fetch
+      const formData = new FormData();
+      formData.append('theme', radio.value);
+      fetch('/admin/settings/theme', {
+        method: 'POST',
+        body: formData,
+      });
+    });
+  });
 }

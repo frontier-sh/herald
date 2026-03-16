@@ -2892,3 +2892,591 @@ tbody tr:hover {
     padding-right: var(--space-4);
   }
 }
+
+/* ============================================
+   Theme Picker (Admin)
+   ============================================ */
+.theme-picker {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-4);
+}
+
+.theme-card {
+  position: relative;
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  cursor: pointer;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.theme-card:hover {
+  border-color: var(--color-border-hover);
+}
+
+.theme-card.active {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 1px var(--color-primary);
+}
+
+.theme-card input[type="radio"] {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.theme-card-preview {
+  height: 80px;
+  border-radius: var(--radius-sm);
+  margin-bottom: var(--space-3);
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  padding: var(--space-3);
+}
+
+.theme-card-preview-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.theme-card-preview-title {
+  width: 50%;
+  height: 8px;
+  border-radius: 4px;
+}
+
+.theme-card-preview-subtitle {
+  width: 70%;
+  height: 5px;
+  border-radius: 3px;
+}
+
+.theme-card-preview-badges {
+  display: flex;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.theme-card-preview-badge {
+  width: 24px;
+  height: 8px;
+  border-radius: 4px;
+}
+
+.theme-card-preview-line {
+  width: 90%;
+  height: 4px;
+  border-radius: 2px;
+}
+
+.theme-card-name {
+  font-weight: 600;
+  font-size: var(--text-sm);
+  color: var(--color-text);
+  margin-bottom: 2px;
+}
+
+.theme-card-description {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+@media (max-width: 640px) {
+  .theme-picker {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ============================================
+   Theme Preview Container (Admin)
+   ============================================ */
+.theme-preview-container {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  max-height: 520px;
+  overflow-y: auto;
+}
+
+.theme-preview-frame {
+  font-size: 0.8em;
+  min-height: 300px;
+}
+
+.theme-preview-frame[data-theme="herald"],
+.theme-preview-frame:not([data-theme]) {
+  background-color: var(--color-bg);
+}
+
+.theme-preview-header {
+  padding: var(--space-3) var(--space-6);
+  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  align-items: center;
+}
+
+.theme-preview-brand {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: var(--text-base);
+  color: var(--color-text);
+  text-decoration: none;
+}
+
+.theme-preview-brand-logo {
+  max-height: 22px;
+  width: auto;
+}
+
+.theme-preview-content {
+  padding: 0 var(--space-6) var(--space-6);
+}
+
+/* Preview inherits changelog styles but reduce hero padding */
+.theme-preview-content .changelog-hero {
+  padding: var(--space-4) 0 var(--space-6);
+}
+
+.theme-preview-content .changelog-title {
+  font-size: var(--text-2xl);
+}
+
+/* ============================================
+   OpenCode Theme (Dark/Monospace)
+   ============================================ */
+.public-body[data-theme="opencode"],
+.theme-preview-frame[data-theme="opencode"] {
+  background-color: #0a0a0a;
+  color: #e5e5e5;
+}
+
+[data-theme="opencode"] .public-header {
+  background-color: #0a0a0a;
+  border-bottom-color: #1a1a1a;
+}
+
+[data-theme="opencode"] .public-brand {
+  font-family: var(--font-mono);
+  color: #e5e5e5;
+  font-weight: 700;
+}
+
+[data-theme="opencode"] .public-brand-logo {
+  filter: brightness(0) invert(1);
+}
+
+[data-theme="opencode"] .rss-link {
+  color: #666;
+}
+
+[data-theme="opencode"] .rss-link:hover {
+  color: #a3a3a3;
+}
+
+[data-theme="opencode"] .public-main {
+  background-color: #0a0a0a;
+}
+
+[data-theme="opencode"] .public-container {
+  max-width: 720px;
+}
+
+[data-theme="opencode"] .public-footer {
+  background-color: #0a0a0a;
+  border-top-color: #1a1a1a;
+}
+
+[data-theme="opencode"] .powered-by {
+  color: #444;
+}
+
+[data-theme="opencode"] .powered-by a {
+  color: #666;
+}
+
+/* OpenCode: Hero */
+[data-theme="opencode"] .changelog-hero {
+  text-align: left;
+  padding: var(--space-8) 0 var(--space-4);
+}
+
+[data-theme="opencode"] .changelog-title {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  color: #ffffff;
+  letter-spacing: -0.01em;
+}
+
+[data-theme="opencode"] .changelog-subtitle {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: #666;
+  margin: 0;
+  max-width: none;
+}
+
+/* OpenCode: Hide category filters */
+[data-theme="opencode"] .category-filters {
+  display: none;
+}
+
+/* OpenCode: Timeline (remove decoration) */
+[data-theme="opencode"] .changelog-timeline .timeline {
+  padding-left: 0;
+}
+
+[data-theme="opencode"] .changelog-timeline .timeline::before {
+  display: none;
+}
+
+[data-theme="opencode"] .changelog-timeline .timeline-marker {
+  display: none;
+}
+
+[data-theme="opencode"] .changelog-timeline .timeline-item {
+  margin-bottom: var(--space-8);
+  padding-bottom: var(--space-8);
+  border-bottom: 1px solid #1a1a1a;
+}
+
+[data-theme="opencode"] .changelog-timeline .timeline-item:last-child {
+  border-bottom: none;
+}
+
+/* OpenCode: Version header */
+[data-theme="opencode"] .changelog-timeline .timeline-header {
+  margin-bottom: var(--space-4);
+}
+
+[data-theme="opencode"] .changelog-timeline .timeline-version {
+  font-family: var(--font-mono);
+  font-size: var(--text-lg);
+  font-weight: 700;
+  color: #ffffff;
+  letter-spacing: 0;
+}
+
+[data-theme="opencode"] .changelog-timeline .timeline-date {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: #555;
+}
+
+[data-theme="opencode"] .timeline-release-title {
+  font-family: var(--font-mono);
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: #e5e5e5;
+}
+
+[data-theme="opencode"] .timeline-summary {
+  font-family: var(--font-mono);
+  color: #888;
+  font-size: var(--text-sm);
+}
+
+/* OpenCode: Category badges */
+[data-theme="opencode"] .entry-group-badge {
+  font-family: var(--font-mono);
+  background-color: transparent !important;
+  color: #888 !important;
+  border: 1px solid #333;
+  text-transform: capitalize;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0;
+  border-radius: var(--radius-sm);
+}
+
+/* OpenCode: Entry items */
+[data-theme="opencode"] .entry-group {
+  margin-bottom: var(--space-4);
+}
+
+[data-theme="opencode"] .entry-group-item {
+  border-bottom-color: #111;
+  padding: var(--space-2) 0;
+}
+
+[data-theme="opencode"] .entry-group-item-title {
+  font-family: var(--font-mono);
+  color: #d4d4d4;
+  font-weight: 500;
+  font-size: var(--text-sm);
+}
+
+[data-theme="opencode"] .entry-group-item-title::before {
+  content: '\00b7  ';
+  color: #555;
+}
+
+[data-theme="opencode"] .entry-group-item-content {
+  font-family: var(--font-mono);
+  color: #666;
+  font-size: var(--text-xs);
+}
+
+/* OpenCode: Prose styling */
+[data-theme="opencode"] .prose {
+  color: #888;
+}
+
+[data-theme="opencode"] .prose a {
+  color: #a3a3a3;
+}
+
+[data-theme="opencode"] .prose code {
+  color: #d4d4d4;
+  background-color: #1a1a1a;
+}
+
+/* OpenCode: Empty state */
+[data-theme="opencode"] .changelog-empty {
+  color: #555;
+}
+
+[data-theme="opencode"] .changelog-empty h2 {
+  color: #888;
+}
+
+/* OpenCode: Preview header overrides */
+.theme-preview-frame[data-theme="opencode"] .theme-preview-header {
+  background-color: #0a0a0a;
+  border-bottom-color: #1a1a1a;
+}
+
+.theme-preview-frame[data-theme="opencode"] .theme-preview-brand {
+  font-family: var(--font-mono);
+  color: #e5e5e5;
+}
+
+.theme-preview-frame[data-theme="opencode"] .theme-preview-brand-logo {
+  filter: brightness(0) invert(1);
+}
+
+.theme-preview-frame[data-theme="opencode"] .theme-preview-content {
+  background-color: #0a0a0a;
+}
+
+/* ============================================
+   Notion Theme (Clean/Editorial)
+   ============================================ */
+.public-body[data-theme="notion"],
+.theme-preview-frame[data-theme="notion"] {
+  background-color: #ffffff;
+}
+
+[data-theme="notion"] .public-header {
+  background-color: #ffffff;
+  border-bottom-color: #f0f0f0;
+}
+
+[data-theme="notion"] .public-brand {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-weight: 700;
+  color: #37352f;
+}
+
+[data-theme="notion"] .rss-link {
+  color: #b4b4b4;
+}
+
+[data-theme="notion"] .rss-link:hover {
+  color: #37352f;
+}
+
+[data-theme="notion"] .public-main {
+  background-color: #ffffff;
+}
+
+[data-theme="notion"] .public-container {
+  max-width: 720px;
+}
+
+[data-theme="notion"] .public-footer {
+  background-color: #ffffff;
+  border-top-color: #f0f0f0;
+}
+
+[data-theme="notion"] .powered-by {
+  color: #b4b4b4;
+}
+
+[data-theme="notion"] .powered-by a {
+  color: #9b9b9b;
+}
+
+/* Notion: Hero */
+[data-theme="notion"] .changelog-hero {
+  text-align: left;
+  padding: var(--space-10) 0 var(--space-6);
+  border-bottom: 1px solid #e8e8e8;
+  margin-bottom: var(--space-2);
+}
+
+[data-theme="notion"] .changelog-title {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 2.25rem;
+  font-weight: 700;
+  color: #37352f;
+  letter-spacing: -0.03em;
+}
+
+[data-theme="notion"] .changelog-subtitle {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: var(--text-base);
+  color: #787774;
+  max-width: none;
+  margin: 0;
+}
+
+/* Notion: Hide category filters */
+[data-theme="notion"] .category-filters {
+  display: none;
+}
+
+/* Notion: Timeline (remove decoration, article layout) */
+[data-theme="notion"] .changelog-timeline .timeline {
+  padding-left: 0;
+}
+
+[data-theme="notion"] .changelog-timeline .timeline::before {
+  display: none;
+}
+
+[data-theme="notion"] .changelog-timeline .timeline-marker {
+  display: none;
+}
+
+[data-theme="notion"] .changelog-timeline .timeline-item {
+  margin-bottom: 0;
+  padding: var(--space-10) 0;
+  border-bottom: 1px solid #e8e8e8;
+}
+
+[data-theme="notion"] .changelog-timeline .timeline-item:last-child {
+  border-bottom: none;
+}
+
+/* Notion: Version header (date above version) */
+[data-theme="notion"] .changelog-timeline .timeline-header {
+  flex-direction: column-reverse;
+  align-items: flex-start;
+  gap: var(--space-1);
+  margin-bottom: var(--space-4);
+}
+
+[data-theme="notion"] .changelog-timeline .timeline-version {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #37352f;
+  letter-spacing: -0.02em;
+}
+
+[data-theme="notion"] .changelog-timeline .timeline-date {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: var(--text-sm);
+  color: #9b9a97;
+  text-transform: none;
+  font-weight: 400;
+}
+
+[data-theme="notion"] .timeline-release-title {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: #37352f;
+}
+
+[data-theme="notion"] .timeline-summary {
+  color: #55534e;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+/* Notion: Category badges */
+[data-theme="notion"] .entry-group-badge {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: capitalize;
+  border-radius: var(--radius-sm);
+}
+
+/* Notion: Entry items */
+[data-theme="notion"] .entry-group {
+  margin-bottom: var(--space-5);
+}
+
+[data-theme="notion"] .entry-group-item {
+  border-bottom-color: #f5f5f4;
+  padding: var(--space-2) 0;
+}
+
+[data-theme="notion"] .entry-group-item-title {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color: #37352f;
+  font-weight: 600;
+  font-size: var(--text-base);
+}
+
+[data-theme="notion"] .entry-group-item-content {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color: #55534e;
+  font-size: var(--text-sm);
+}
+
+/* Notion: Prose */
+[data-theme="notion"] .prose {
+  color: #55534e;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+[data-theme="notion"] .prose a {
+  color: #37352f;
+  text-decoration: underline;
+}
+
+/* Notion: Empty state */
+[data-theme="notion"] .changelog-empty h2 {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color: #37352f;
+}
+
+[data-theme="notion"] .changelog-empty p {
+  color: #9b9a97;
+}
+
+/* Notion: Preview header overrides */
+.theme-preview-frame[data-theme="notion"] .theme-preview-header {
+  background-color: #ffffff;
+  border-bottom-color: #f0f0f0;
+}
+
+.theme-preview-frame[data-theme="notion"] .theme-preview-brand {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color: #37352f;
+}
+
+.theme-preview-frame[data-theme="notion"] .theme-preview-content {
+  background-color: #ffffff;
+}
+
+/* ============================================
+   Theme Preview Responsive
+   ============================================ */
+@media (max-width: 640px) {
+  .theme-preview-frame {
+    font-size: 0.75em;
+  }
+
+  .theme-preview-content .changelog-title {
+    font-size: var(--text-xl);
+  }
+}

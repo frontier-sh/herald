@@ -26,6 +26,7 @@ import { purgePublicCache, purgeImageCache } from '../services/cache';
 import { uploadContentImage, uploadBrandImage, deleteImage } from '../services/images';
 import type { Category, EntryStatus, ReleaseStatus } from '../db/schema';
 
+import { fetchChangelogData } from './public';
 import { AdminLayout } from '../views/layouts/admin-layout';
 import { AdminLogin } from '../views/pages/admin-login';
 import { Dashboard } from '../views/pages/dashboard';
@@ -583,9 +584,39 @@ admin.get('/customise', async (c) => {
   const url = new URL(c.req.url);
   const baseUrl = c.env.BASE_URL || `${url.protocol}//${url.host}`;
 
+  // Fetch changelog data for live preview
+  const changelogData = await fetchChangelogData(c.env.DB);
+  const hasContent = changelogData.releases.length > 0 || changelogData.standaloneEntries.length > 0;
+
+  // Example data if no published content exists
+  const exampleReleases = hasContent ? changelogData.releases : [{
+    id: 0,
+    version: 'v1.0.0',
+    title: 'Initial Release',
+    summary: 'The first release of our product with core functionality.',
+    status: 'published' as const,
+    published_at: new Date().toISOString(),
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    entries: [
+      { id: 1, title: 'Dark mode support', content: 'Added full dark mode with system preference detection.', category: 'added' as const, version: 'v1.0.0', status: 'published' as const, published_at: new Date().toISOString(), created_at: new Date().toISOString(), updated_at: new Date().toISOString(), source: 'manual' as const, source_metadata: null, ai_status: null, raw_content: null },
+      { id: 2, title: 'Login page not loading on mobile devices', content: 'Resolved an issue where the login form failed to render on iOS Safari.', category: 'fixed' as const, version: 'v1.0.0', status: 'published' as const, published_at: new Date().toISOString(), created_at: new Date().toISOString(), updated_at: new Date().toISOString(), source: 'manual' as const, source_metadata: null, ai_status: null, raw_content: null },
+      { id: 3, title: 'Updated dashboard layout for better navigation', content: 'Reorganised the sidebar and top nav for improved discoverability.', category: 'changed' as const, version: 'v1.0.0', status: 'published' as const, published_at: new Date().toISOString(), created_at: new Date().toISOString(), updated_at: new Date().toISOString(), source: 'manual' as const, source_metadata: null, ai_status: null, raw_content: null },
+    ],
+  }];
+  const exampleStandalone = hasContent ? changelogData.standaloneEntries : [];
+
   return c.html(
     <AdminLayout title="Customise" currentPath="/admin/customise" flash={flash} githubUser={c.get('githubUser')}>
-      <CustomisePage settings={settings} baseUrl={baseUrl} />
+      <CustomisePage
+        settings={settings}
+        baseUrl={baseUrl}
+        previewReleases={exampleReleases}
+        previewStandaloneEntries={exampleStandalone}
+        previewProjectName={changelogData.projectName}
+        previewProjectDescription={changelogData.projectDescription}
+        previewLogoUrl={changelogData.logoUrl}
+      />
     </AdminLayout>,
   );
 });
@@ -618,6 +649,24 @@ admin.post('/settings/general', async (c) => {
     setFlash(c, 'success', 'General settings saved successfully.');
   } catch (err) {
     setFlash(c, 'error', 'Failed to save general settings.');
+  }
+
+  return c.redirect('/admin/customise');
+});
+
+// ─── Settings: Theme ────────────────────────────────────
+
+admin.post('/settings/theme', async (c) => {
+  const body = await c.req.parseBody();
+  const theme = body['theme'] as string;
+  const validThemes = ['herald', 'opencode', 'notion'];
+  const selectedTheme = validThemes.includes(theme) ? theme : 'herald';
+
+  try {
+    await setSetting(c.env.DB, 'theme', selectedTheme);
+    setFlash(c, 'success', 'Theme saved successfully.');
+  } catch (err) {
+    setFlash(c, 'error', 'Failed to save theme.');
   }
 
   return c.redirect('/admin/customise');
