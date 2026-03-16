@@ -2269,6 +2269,17 @@ tbody tr:hover {
   margin-bottom: var(--space-16);
 }
 
+.changelog-timeline .timeline-item--sections {
+  margin-bottom: var(--space-8);
+  padding-bottom: var(--space-8);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.changelog-timeline .timeline-item--sections:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
 .changelog-timeline .timeline-item::before {
   display: none;
 }
@@ -2385,6 +2396,15 @@ tbody tr:hover {
 
 .entry-group-item-content p:last-child {
   margin-bottom: 0;
+}
+
+/* Herald: Section grouping - override timeline left padding */
+.changelog-timeline .timeline:has(.timeline-item--sections) {
+  padding-left: 0;
+}
+
+.changelog-timeline .timeline:has(.timeline-item--sections)::before {
+  display: none;
 }
 
 /* ============================================
@@ -2988,24 +3008,103 @@ tbody tr:hover {
 /* ============================================
    Public Changelog: Section Grouping
    ============================================ */
+
+/* Two-column layout: version/date sidebar + content */
+.timeline-item--sections {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 0 var(--space-8);
+}
+
+.timeline-item--sections .timeline-marker {
+  display: none;
+}
+
+.timeline-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding-top: var(--space-1);
+}
+
+.timeline-sidebar .timeline-version {
+  font-family: var(--font-heading);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-text);
+  line-height: 1.4;
+}
+
+.timeline-sidebar .timeline-date {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  line-height: 1.4;
+}
+
 .entry-section {
   margin-bottom: var(--space-6);
 }
 
-.entry-section-title {
-  font-size: 1.1rem;
-  font-weight: 600;
-  margin: 0 0 var(--space-3) 0;
-  padding-bottom: var(--space-2);
-  border-bottom: 1px solid var(--color-border);
+.entry-section:last-child {
+  margin-bottom: 0;
 }
 
-.entry-group-badge-inline {
-  font-size: 0.6rem;
-  padding: 1px 6px;
-  border-radius: 9999px;
-  margin-right: var(--space-2);
-  vertical-align: middle;
+.entry-section-title {
+  font-family: var(--font-heading);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  margin: 0 0 var(--space-2) 0;
+  color: var(--color-text);
+}
+
+.entry-section-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 0 var(--space-3);
+}
+
+.entry-section-item {
+  position: relative;
+  padding: var(--space-1) 0;
+  padding-left: var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+}
+
+.entry-section-item::before {
+  content: '\00b7';
+  position: absolute;
+  left: 0;
+  color: var(--color-text-muted);
+}
+
+.entry-section-item-title {
+  color: var(--color-text-secondary);
+  font-weight: 400;
+}
+
+.entry-section-item-content {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  margin-top: var(--space-1);
+}
+
+.entry-section-item-content p:last-child {
+  margin-bottom: 0;
+}
+
+@media (max-width: 640px) {
+  .timeline-item--sections {
+    grid-template-columns: 1fr;
+  }
+
+  .timeline-sidebar {
+    flex-direction: row;
+    align-items: baseline;
+    gap: var(--space-3);
+    margin-bottom: var(--space-3);
+  }
 }
 
 /* ============================================
@@ -3263,6 +3362,12 @@ tbody tr:hover {
   border-bottom: none;
 }
 
+[data-theme="opencode"] .changelog-timeline .timeline-item--sections {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
 /* OpenCode: Version header */
 [data-theme="opencode"] .changelog-timeline .timeline-header {
   margin-bottom: var(--space-4);
@@ -3331,6 +3436,57 @@ tbody tr:hover {
 }
 
 [data-theme="opencode"] .entry-group-item-content {
+  font-family: var(--font-mono);
+  color: #666;
+  font-size: var(--text-xs);
+}
+
+/* OpenCode: Section grouping */
+[data-theme="opencode"] .timeline-item--sections {
+  border-bottom: 1px solid #1a1a1a;
+  margin-bottom: var(--space-8);
+  padding-bottom: var(--space-8);
+}
+
+[data-theme="opencode"] .timeline-item--sections:last-child {
+  border-bottom: none;
+}
+
+[data-theme="opencode"] .timeline-sidebar .timeline-version {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: #e5e5e5;
+}
+
+[data-theme="opencode"] .timeline-sidebar .timeline-date {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: #555;
+}
+
+[data-theme="opencode"] .entry-section-title {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: #e5e5e5;
+}
+
+[data-theme="opencode"] .entry-section-item {
+  color: #a3a3a3;
+}
+
+[data-theme="opencode"] .entry-section-item::before {
+  color: #555;
+}
+
+[data-theme="opencode"] .entry-section-item-title {
+  font-family: var(--font-mono);
+  color: #a3a3a3;
+  font-size: var(--text-sm);
+}
+
+[data-theme="opencode"] .entry-section-item-content {
   font-family: var(--font-mono);
   color: #666;
   font-size: var(--text-xs);
@@ -3478,6 +3634,11 @@ tbody tr:hover {
   border-bottom: none;
 }
 
+[data-theme="notion"] .changelog-timeline .timeline-item--sections {
+  padding: 0;
+  border-bottom: none;
+}
+
 /* Notion: Version header (date above version) */
 [data-theme="notion"] .changelog-timeline .timeline-header {
   flex-direction: column-reverse;
@@ -3545,6 +3706,55 @@ tbody tr:hover {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   color: #55534e;
   font-size: var(--text-sm);
+}
+
+/* Notion: Section grouping */
+[data-theme="notion"] .timeline-item--sections {
+  padding: var(--space-10) 0;
+  border-bottom: 1px solid #e8e8e8;
+  margin-bottom: 0;
+}
+
+[data-theme="notion"] .timeline-item--sections:last-child {
+  border-bottom: none;
+}
+
+[data-theme="notion"] .timeline-sidebar .timeline-version {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: #37352f;
+}
+
+[data-theme="notion"] .timeline-sidebar .timeline-date {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: var(--text-xs);
+  color: #9b9a97;
+}
+
+[data-theme="notion"] .entry-section-title {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: #37352f;
+}
+
+[data-theme="notion"] .entry-section-item {
+  color: #55534e;
+}
+
+[data-theme="notion"] .entry-section-item::before {
+  color: #b4b4b4;
+}
+
+[data-theme="notion"] .entry-section-item-title {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color: #55534e;
+}
+
+[data-theme="notion"] .entry-section-item-content {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color: #9b9a97;
 }
 
 /* Notion: Prose */
