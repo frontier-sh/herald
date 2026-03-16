@@ -17,7 +17,7 @@ interface ReleaseWithEntries extends Release {
 
 // ─── Shared Data Fetching ──────────────────────────────
 
-async function fetchChangelogData(db: D1Database) {
+export async function fetchChangelogData(db: D1Database) {
   const settings = await getAllSettings(db);
   const projectName = settings['project_name'] || 'Changelog';
   const projectDescription = settings['project_description'] || '';
@@ -53,7 +53,9 @@ async function fetchChangelogData(db: D1Database) {
   const faviconUrl = faviconKey ? `/images/${faviconKey}` : null;
   const entryGrouping = (settings['entry_grouping'] as 'category' | 'section') || 'category';
 
-  return { projectName, projectDescription, releases, standaloneEntries, logoUrl, faviconUrl, entryGrouping };
+  const theme = settings['theme'] || 'herald';
+
+  return { projectName, projectDescription, releases, standaloneEntries, logoUrl, faviconUrl, entryGrouping, theme };
 }
 
 const pub = new Hono<{ Bindings: Bindings }>();
@@ -105,7 +107,7 @@ pub.get('/', async (c) => {
   const cached = await getCachedResponse(c.req.raw);
   if (cached) return cached;
 
-  const { projectName, projectDescription, releases, standaloneEntries, logoUrl, faviconUrl, entryGrouping } =
+  const { projectName, projectDescription, releases, standaloneEntries, logoUrl, faviconUrl, entryGrouping, theme } =
     await fetchChangelogData(c.env.DB);
 
   const response = await c.html(
@@ -115,6 +117,7 @@ pub.get('/', async (c) => {
       projectName={projectName}
       logoUrl={logoUrl}
       faviconUrl={faviconUrl}
+      theme={theme}
     >
       <Changelog
         projectName={projectName}
@@ -138,11 +141,11 @@ pub.get('/embed', async (c) => {
   const cached = await getCachedResponse(c.req.raw);
   if (cached) return cached;
 
-  const { projectName, projectDescription, releases, standaloneEntries, logoUrl, faviconUrl, entryGrouping } =
+  const { projectName, projectDescription, releases, standaloneEntries, logoUrl, faviconUrl, entryGrouping, theme } =
     await fetchChangelogData(c.env.DB);
 
   const response = await c.html(
-    <EmbedLayout faviconUrl={faviconUrl}>
+    <EmbedLayout faviconUrl={faviconUrl} theme={theme}>
       <Changelog
         projectName={projectName}
         projectDescription={projectDescription}

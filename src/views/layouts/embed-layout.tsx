@@ -5,9 +5,10 @@ import { html } from 'hono/html';
 interface EmbedLayoutProps {
   children: any;
   faviconUrl?: string | null;
+  theme?: string;
 }
 
-export const EmbedLayout: FC<EmbedLayoutProps> = ({ children, faviconUrl }) => {
+export const EmbedLayout: FC<EmbedLayoutProps> = ({ children, faviconUrl, theme }) => {
   return (
     <html lang="en">
       <head>
@@ -23,7 +24,7 @@ export const EmbedLayout: FC<EmbedLayoutProps> = ({ children, faviconUrl }) => {
         <ClientHead />
       </head>
       <body class="embed-body">
-        <div class="embed-container">
+        <div class="embed-container" data-theme={theme || 'herald'}>
           {children}
         </div>
         {html`<script>
