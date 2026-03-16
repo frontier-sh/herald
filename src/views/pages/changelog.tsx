@@ -123,24 +123,18 @@ const EntriesBySectionView: FC<{ entries: EntryWithSection[] }> = ({ entries }) 
   if (ungrouped) sectionEntries.push([null, ungrouped]);
 
   return (
-    <div class="timeline-entries">
+    <div class="timeline-entries timeline-entries--sections">
       {sectionEntries.map(([sectionName, sectionEnts]) => (
         <div class="entry-section" data-section={sectionName || 'other'}>
           <h3 class="entry-section-title">{sectionName || 'Other'}</h3>
-          <ul class="entry-group-list">
+          <ul class="entry-section-list">
             {sectionEnts.map((entry) => {
               const contentHtml = renderMarkdown(entry.content || '');
               return (
-                <li class="entry-group-item" data-category={entry.category}>
-                  <span
-                    class="entry-group-badge entry-group-badge-inline"
-                    style={`background-color: ${CATEGORY_COLORS[entry.category].bg}; color: ${CATEGORY_COLORS[entry.category].text};`}
-                  >
-                    {entry.category.charAt(0).toUpperCase() + entry.category.slice(1)}
-                  </span>
-                  <strong class="entry-group-item-title">{entry.title}</strong>
+                <li class="entry-section-item" data-category={entry.category}>
+                  <span class="entry-section-item-title">{entry.title}</span>
                   {contentHtml && (
-                    <div class="prose entry-group-item-content" dangerouslySetInnerHTML={{ __html: contentHtml }} />
+                    <div class="prose entry-section-item-content" dangerouslySetInnerHTML={{ __html: contentHtml }} />
                   )}
                 </li>
               );
@@ -198,42 +192,63 @@ export const Changelog: FC<ChangelogProps> = ({
               const releaseDate = release.published_at || release.created_at;
 
               return (
-                <div class="timeline-item" id={`release-${release.version}`}>
+                <div class={`timeline-item${useSection ? ' timeline-item--sections' : ''}`} id={`release-${release.version}`}>
                   <div class="timeline-marker"></div>
-                  <div class="timeline-content">
-                    <div class="timeline-header">
-                      <span class="timeline-version">{release.version}</span>
-                      <span class="timeline-date">{formatDate(releaseDate)}</span>
-                    </div>
-                    {release.title && (
-                      <h2 class="timeline-release-title">{release.title}</h2>
-                    )}
-                    {summaryHtml && (
-                      <div class="prose timeline-summary" dangerouslySetInnerHTML={{ __html: summaryHtml }} />
-                    )}
-                    {useSection ? (
-                      <EntriesBySectionView entries={release.entries} />
-                    ) : (
+                  {useSection ? (
+                    <>
+                      <div class="timeline-sidebar">
+                        <span class="timeline-version">{release.version}</span>
+                        <span class="timeline-date">{formatDate(releaseDate)}</span>
+                      </div>
+                      <div class="timeline-content">
+                        {release.title && (
+                          <h2 class="timeline-release-title">{release.title}</h2>
+                        )}
+                        {summaryHtml && (
+                          <div class="prose timeline-summary" dangerouslySetInnerHTML={{ __html: summaryHtml }} />
+                        )}
+                        <EntriesBySectionView entries={release.entries} />
+                      </div>
+                    </>
+                  ) : (
+                    <div class="timeline-content">
+                      <div class="timeline-header">
+                        <span class="timeline-version">{release.version}</span>
+                        <span class="timeline-date">{formatDate(releaseDate)}</span>
+                      </div>
+                      {release.title && (
+                        <h2 class="timeline-release-title">{release.title}</h2>
+                      )}
+                      {summaryHtml && (
+                        <div class="prose timeline-summary" dangerouslySetInnerHTML={{ __html: summaryHtml }} />
+                      )}
                       <EntriesByCategoryView entries={release.entries} />
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
               );
             })}
 
             {standaloneEntries.length > 0 && (
-              <div class="timeline-item" id="standalone-entries">
+              <div class={`timeline-item${useSection ? ' timeline-item--sections' : ''}`} id="standalone-entries">
                 <div class="timeline-marker"></div>
-                <div class="timeline-content">
-                  <div class="timeline-header">
-                    <span class="timeline-version">Other Updates</span>
-                  </div>
-                  {useSection ? (
-                    <EntriesBySectionView entries={standaloneEntries} />
-                  ) : (
+                {useSection ? (
+                  <>
+                    <div class="timeline-sidebar">
+                      <span class="timeline-version">Other Updates</span>
+                    </div>
+                    <div class="timeline-content">
+                      <EntriesBySectionView entries={standaloneEntries} />
+                    </div>
+                  </>
+                ) : (
+                  <div class="timeline-content">
+                    <div class="timeline-header">
+                      <span class="timeline-version">Other Updates</span>
+                    </div>
                     <EntriesByCategoryView entries={standaloneEntries} />
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
