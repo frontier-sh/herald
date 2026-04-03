@@ -2,6 +2,8 @@
   "name": "herald",
   "compatibility_date": "2025-01-01",
   "main": "./dist/index.js",
+  "workers_dev": true,
+  "preview_urls": false,
 
   // D1 Database
   "d1_databases": [

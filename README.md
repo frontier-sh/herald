@@ -2,9 +2,9 @@
 
 **Open-source changelog app powered by Cloudflare Workers**
 
-A self-hosted changelog solution that makes it easy to track, manage, and publish software changes. Deploy in one click to Cloudflare Workers.
+A self-hosted changelog solution that makes it easy to track, manage, and publish software changes. Fork, deploy, and stay in sync with upstream updates.
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/frontier-sh/herald) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 ## Features
 
@@ -21,25 +21,86 @@ A self-hosted changelog solution that makes it easy to track, manage, and publis
 - GitHub OAuth admin authentication (scoped to repo collaborators)
 - Runs on Cloudflare Workers -- fast, global, free tier friendly
 
-## Quick Start
+## Setup
 
-### Deploy to Cloudflare
+### 1. Fork and clone
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/frontier-sh/herald)
+[Fork this repository](https://github.com/frontier-sh/herald/fork), then clone your fork:
 
-After deploying, you'll need to:
-
-1. Create the R2 bucket: `wrangler r2 bucket create herald-images`
-2. Set up GitHub OAuth -- see [Authentication](#authentication) below.
-
-### Local Development
-
-```bash
-git clone https://github.com/frontier-sh/herald.git
+```sh
+git clone https://github.com/<your-username>/herald.git
 cd herald
 npm install
-cp .dev.vars.example .dev.vars
-npm run db:migrate:local
+```
+
+### 2. Create a GitHub OAuth App
+
+Go to [github.com/settings/developers](https://github.com/settings/developers) and create an OAuth App:
+
+- **Authorization callback URL:** `https://<your-worker>.<your-workers-subdomain>.workers.dev/auth/github/callback`
+
+Note the Client ID and Client Secret.
+
+### 3. Create the D1 database
+
+```sh
+wrangler d1 create herald-db
+```
+
+Copy the `database_id` into `wrangler.jsonc`.
+
+### 4. Create the R2 bucket
+
+```sh
+wrangler r2 bucket create herald-images
+```
+
+### 5. Create the Queue
+
+```sh
+wrangler queues create herald-queue
+```
+
+### 6. Set secrets
+
+```sh
+wrangler secret put GITHUB_CLIENT_ID
+wrangler secret put GITHUB_CLIENT_SECRET
+wrangler secret put GITHUB_ALLOWED_REPO    # e.g. your-org/your-repo
+```
+
+### 7. Deploy
+
+```sh
+npm run build && npm run deploy
+```
+
+### 8. Connect Workers Builds
+
+To auto-deploy when you push (and when you sync upstream updates):
+
+1. Go to **Cloudflare Dashboard > Workers & Pages > herald > Settings > Builds**
+2. Click **Connect** and select your forked repository
+3. Set the **build command** to `npm run build`
+4. Set the **deploy command** to `npm run deploy`
+
+### Staying up to date
+
+Sync updates from upstream and your fork will auto-deploy via Workers Builds:
+
+```sh
+git fetch upstream
+git merge upstream/main
+git push
+```
+
+Or use GitHub's **Sync fork** button on your fork's page.
+
+## Local development
+
+```sh
+cp .dev.vars.example .dev.vars   # fill in your values
+npm run db:migrate
 npm run dev
 ```
 
@@ -50,24 +111,6 @@ For local development, create a separate GitHub OAuth App with the callback URL 
 ## Authentication
 
 Herald uses GitHub OAuth to control access to the admin panel. Only users who have access to a specific GitHub repository can sign in. Each deployment is independent -- your OAuth App and repo gate are yours alone.
-
-### Setup
-
-1. Go to [github.com/settings/developers](https://github.com/settings/developers) and click **New OAuth App**.
-2. Fill in the form:
-   - **Application name**: Herald (or any name you like)
-   - **Homepage URL**: `https://your-worker.workers.dev`
-   - **Authorization callback URL**: `https://your-worker.workers.dev/auth/github/callback`
-3. Click **Register application**, then generate a client secret.
-4. Set the three secrets in Cloudflare:
-
-```bash
-wrangler secret put GITHUB_CLIENT_ID
-wrangler secret put GITHUB_CLIENT_SECRET
-wrangler secret put GITHUB_ALLOWED_REPO    # e.g. your-org/your-repo
-```
-
-5. Visit `/admin` and sign in with GitHub.
 
 ### Access control
 
@@ -222,8 +265,6 @@ Set these as secrets via `wrangler secret put` or in `.dev.vars` for local devel
 
 ### Cloudflare Resources
 
-Herald uses the following Cloudflare resources (auto-provisioned by the Deploy button):
-
 | Resource | Name | Purpose |
 |----------|------|---------|
 | D1 Database | `herald-db` | Stores entries, releases, settings, and API keys |
@@ -254,7 +295,7 @@ Configurable via the admin panel or the `/api/settings` endpoint:
 - **Images**: [Cloudflare Images](https://developers.cloudflare.com/images/) (optimization)
 - **AI**: [Cloudflare Workers AI](https://developers.cloudflare.com/workers-ai/)
 - **Queue**: [Cloudflare Queues](https://developers.cloudflare.com/queues/)
-- **Build**: [Vite](https://vite.dev/) + [@hono/vite-build](https://github.com/honojs/vite-plugins)
+- **Build**: [Vite](https://vite.dev/)
 - **Editor**: [EasyMDE](https://github.com/Ionaru/easy-markdown-editor) (Markdown)
 - **Language**: TypeScript
 
