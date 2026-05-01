@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import type { Bindings } from '../bindings';
-import { listReleases, getRelease } from '../services/releases';
+import { listReleases, getRelease, getReleaseByVersion } from '../services/releases';
 import { listEntries } from '../services/entries';
 import { getAllSettings } from '../services/settings';
 import { generateRSS } from '../services/rss';
@@ -10,6 +10,7 @@ import type { Release, EntryWithSection } from '../db/schema';
 import { PublicLayout } from '../views/layouts/public-layout';
 import { EmbedLayout } from '../views/layouts/embed-layout';
 import { Changelog } from '../views/pages/changelog';
+import { ReleaseDetail } from '../views/pages/release-detail';
 
 interface ReleaseWithEntries extends Release {
   entries: EntryWithSection[];
@@ -135,6 +136,64 @@ pub.get('/', async (c) => {
   return response;
 });
 
+// ─── Public Release Permalink ──────────────────────────
+
+pub.get('/releases/:slug', async (c) => {
+  const cached = await getCachedResponse(c.req.raw);
+  if (cached) return cached;
+
+  const slugParam = c.req.param('slug');
+  let version: string;
+  try {
+    version = decodeURIComponent(slugParam);
+  } catch {
+    return c.notFound();
+  }
+
+  const release = await getReleaseByVersion(c.env.DB, version);
+  if (!release || release.status !== 'published') {
+    return c.notFound();
+  }
+
+  const full = await getRelease(c.env.DB, release.id);
+  if (!full) return c.notFound();
+
+  const settings = await getAllSettings(c.env.DB);
+  const projectName = settings['project_name'] || 'Changelog';
+  const projectDescription = settings['project_description'] || '';
+  const logoKey = settings['logo_image_key'] || '';
+  const faviconKey = settings['favicon_image_key'] || '';
+  const logoUrl = logoKey ? `/images/${logoKey}` : null;
+  const faviconUrl = faviconKey ? `/images/${faviconKey}` : null;
+  const entryGrouping = (settings['entry_grouping'] as 'category' | 'section') || 'category';
+  const theme = settings['theme'] || 'herald';
+
+  const pageTitle = full.title ? `${full.version} – ${full.title}` : full.version;
+  const description = full.summary || projectDescription;
+
+  const response = await c.html(
+    <PublicLayout
+      title={pageTitle}
+      description={description}
+      projectName={projectName}
+      logoUrl={logoUrl}
+      faviconUrl={faviconUrl}
+      theme={theme}
+    >
+      <ReleaseDetail
+        projectName={projectName}
+        release={full}
+        entryGrouping={entryGrouping}
+      />
+    </PublicLayout>,
+  );
+
+  response.headers.set('Cache-Control', 'public, s-maxage=31536000, stale-while-revalidate=60');
+  c.executionCtx.waitUntil(cacheResponse(c.req.raw, response));
+
+  return response;
+});
+
 // ─── Embeddable Widget ──────────────────────────────────
 
 pub.get('/embed', async (c) => {
@@ -185,6 +244,7 @@ pub.get('/embed.json', async (c) => {
       title: r.title,
       summary: r.summary,
       published_at: r.published_at,
+      url: `${changelogUrl}/releases/${encodeURIComponent(r.version)}`,
       entries: r.entries.map((e) => ({
         id: e.id,
         title: e.title,

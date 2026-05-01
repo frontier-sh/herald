@@ -12,10 +12,13 @@ import {
 import {
   listReleases,
   getRelease,
+  getReleaseByVersion,
   createRelease,
   updateRelease,
   deleteRelease,
   publishRelease,
+  appendEntriesToRelease,
+  getReleaseVersionsForEntry,
 } from '../services/releases';
 import { getAllSettings, getSetting, setSetting } from '../services/settings';
 import {
@@ -25,7 +28,7 @@ import {
 } from '../services/api-keys';
 import { listSections, getOrCreateSection } from '../services/sections';
 import { enqueueAISummarization } from '../services/ai';
-import { purgePublicCache } from '../services/cache';
+import { purgePublicCache, purgeReleasePages } from '../services/cache';
 import type { Category, EntryStatus, ReleaseStatus } from '../db/schema';
 
 const api = new Hono<{ Bindings: Bindings }>();
@@ -129,6 +132,13 @@ api.put('/entries/:id', async (c) => {
     const entry = await updateEntry(c.env.DB, id, body);
     if (!entry) return c.json({ error: 'Entry not found' }, 404);
 
+    const versions = await getReleaseVersionsForEntry(c.env.DB, id);
+    if (versions.length > 0) {
+      const url = new URL(c.req.url);
+      const baseUrl = c.env.BASE_URL || `${url.protocol}//${url.host}`;
+      c.executionCtx.waitUntil(purgeReleasePages(baseUrl, versions));
+    }
+
     return c.json(entry);
   } catch (err) {
     return c.json({ error: 'Failed to update entry' }, 500);
@@ -140,8 +150,15 @@ api.delete('/entries/:id', async (c) => {
     const id = parseInt(c.req.param('id'), 10);
     if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
 
+    const versions = await getReleaseVersionsForEntry(c.env.DB, id);
     const deleted = await deleteEntry(c.env.DB, id);
     if (!deleted) return c.json({ error: 'Entry not found' }, 404);
+
+    if (versions.length > 0) {
+      const url = new URL(c.req.url);
+      const baseUrl = c.env.BASE_URL || `${url.protocol}//${url.host}`;
+      c.executionCtx.waitUntil(purgeReleasePages(baseUrl, versions));
+    }
 
     return c.json({ success: true });
   } catch (err) {
@@ -156,6 +173,13 @@ api.post('/entries/:id/publish', async (c) => {
 
     const entry = await publishEntry(c.env.DB, id);
     if (!entry) return c.json({ error: 'Entry not found' }, 404);
+
+    const versions = await getReleaseVersionsForEntry(c.env.DB, id);
+    if (versions.length > 0) {
+      const url = new URL(c.req.url);
+      const baseUrl = c.env.BASE_URL || `${url.protocol}//${url.host}`;
+      c.executionCtx.waitUntil(purgeReleasePages(baseUrl, versions));
+    }
 
     return c.json(entry);
   } catch (err) {
@@ -345,6 +369,12 @@ api.delete('/keys/:id', async (c) => {
 api.post('/webhook', async (c) => {
   try {
     const body = await c.req.json<{
+      release?: {
+        version?: string;
+        title?: string;
+        summary?: string;
+        publish?: boolean;
+      };
       entries?: Array<{
         title: string;
         content?: string;
@@ -355,6 +385,12 @@ api.post('/webhook', async (c) => {
 
     if (!body.entries || !Array.isArray(body.entries)) {
       return c.json({ error: 'entries array is required' }, 400);
+    }
+
+    if (body.release !== undefined) {
+      if (!body.release.version || typeof body.release.version !== 'string') {
+        return c.json({ error: 'release.version is required when release is provided' }, 400);
+      }
     }
 
     // Check AI setting once for all entries in the batch
@@ -392,7 +428,48 @@ api.post('/webhook', async (c) => {
       created.push(entry);
     }
 
-    return c.json({ entries: created }, 201);
+    let releaseResponse = null;
+    if (body.release?.version) {
+      const version = body.release.version;
+      let release = await getReleaseByVersion(c.env.DB, version);
+      if (!release) {
+        release = await createRelease(c.env.DB, {
+          version,
+          title: body.release.title,
+          summary: body.release.summary,
+        });
+      } else {
+        // Only fill in title/summary when currently empty - don't clobber human edits
+        const updates: { title?: string; summary?: string } = {};
+        if (body.release.title && !release.title) updates.title = body.release.title;
+        if (body.release.summary && !release.summary) updates.summary = body.release.summary;
+        if (Object.keys(updates).length > 0) {
+          await updateRelease(c.env.DB, release.id, updates);
+        }
+      }
+
+      await appendEntriesToRelease(
+        c.env.DB,
+        release.id,
+        created.map((e) => e.id),
+      );
+
+      if (body.release.publish) {
+        await publishRelease(c.env.DB, release.id);
+      }
+
+      releaseResponse = await getRelease(c.env.DB, release.id);
+
+      // Invalidate the per-release public page in addition to the global purge
+      // performed by the API middleware.
+      const url = new URL(c.req.url);
+      const baseUrl = c.env.BASE_URL || `${url.protocol}//${url.host}`;
+      c.executionCtx.waitUntil(
+        purgePublicCache(baseUrl, [`/releases/${encodeURIComponent(version)}`]),
+      );
+    }
+
+    return c.json({ release: releaseResponse, entries: created }, 201);
   } catch (err) {
     return c.json({ error: 'Failed to process webhook' }, 500);
   }
