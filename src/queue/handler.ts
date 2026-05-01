@@ -1,6 +1,7 @@
 import type { Bindings } from '../bindings';
 import { summarizeContent } from '../services/ai';
-import { purgePublicCache } from '../services/cache';
+import { purgePublicCache, purgeReleasePages } from '../services/cache';
+import { getReleaseVersionsForEntry } from '../services/releases';
 
 interface QueueMessage {
   type: 'summarize';
@@ -61,7 +62,11 @@ export async function handleQueue(
 
       // Purge cached public pages so the new content is visible
       if (env.BASE_URL) {
-        await purgePublicCache(env.BASE_URL);
+        const versions = await getReleaseVersionsForEntry(env.DB, entryId);
+        await Promise.all([
+          purgePublicCache(env.BASE_URL),
+          purgeReleasePages(env.BASE_URL, versions),
+        ]);
       }
 
       message.ack();

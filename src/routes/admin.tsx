@@ -17,12 +17,13 @@ import {
   updateRelease,
   deleteRelease,
   publishRelease,
+  getReleaseVersionsForEntry,
 } from '../services/releases';
 import { getAllSettings, getSetting, setSetting } from '../services/settings';
 import { createApiKey, listApiKeys, deleteApiKey } from '../services/api-keys';
 import { enqueueAISummarization, extractAIText } from '../services/ai';
 import { resolveModelId } from '../services/models';
-import { purgePublicCache, purgeImageCache } from '../services/cache';
+import { purgePublicCache, purgeImageCache, purgeReleasePages } from '../services/cache';
 import { uploadContentImage, uploadBrandImage, deleteImage } from '../services/images';
 import { listSections, getOrCreateSection } from '../services/sections';
 import type { Category, EntryStatus, ReleaseStatus } from '../db/schema';
@@ -272,6 +273,13 @@ admin.post('/entries/:id', async (c) => {
       await publishEntry(c.env.DB, id);
     }
 
+    const versions = await getReleaseVersionsForEntry(c.env.DB, id);
+    if (versions.length > 0) {
+      const url = new URL(c.req.url);
+      const baseUrl = c.env.BASE_URL || `${url.protocol}//${url.host}`;
+      c.executionCtx.waitUntil(purgeReleasePages(baseUrl, versions));
+    }
+
     setFlash(c, 'success', `Entry "${title}" updated successfully.`);
     return c.redirect(`/admin/entries/${id}`);
   } catch (err) {
@@ -290,10 +298,16 @@ admin.post('/entries/:id/delete', async (c) => {
   }
 
   try {
+    const versions = await getReleaseVersionsForEntry(c.env.DB, id);
     const deleted = await deleteEntry(c.env.DB, id);
     if (!deleted) {
       setFlash(c, 'error', 'Entry not found.');
     } else {
+      if (versions.length > 0) {
+        const url = new URL(c.req.url);
+        const baseUrl = c.env.BASE_URL || `${url.protocol}//${url.host}`;
+        c.executionCtx.waitUntil(purgeReleasePages(baseUrl, versions));
+      }
       setFlash(c, 'success', 'Entry deleted successfully.');
     }
   } catch (err) {
@@ -317,6 +331,12 @@ admin.post('/entries/:id/publish', async (c) => {
     if (!entry) {
       setFlash(c, 'error', 'Entry not found.');
       return c.redirect('/admin/entries');
+    }
+    const versions = await getReleaseVersionsForEntry(c.env.DB, id);
+    if (versions.length > 0) {
+      const url = new URL(c.req.url);
+      const baseUrl = c.env.BASE_URL || `${url.protocol}//${url.host}`;
+      c.executionCtx.waitUntil(purgeReleasePages(baseUrl, versions));
     }
     setFlash(c, 'success', `Entry "${entry.title}" published.`);
     return c.redirect(`/admin/entries/${id}`);
@@ -449,6 +469,12 @@ admin.post('/releases', async (c) => {
       await publishRelease(c.env.DB, release.id);
     }
 
+    const url = new URL(c.req.url);
+    const baseUrl = c.env.BASE_URL || `${url.protocol}//${url.host}`;
+    c.executionCtx.waitUntil(
+      purgePublicCache(baseUrl, [`/releases/${encodeURIComponent(version)}`]),
+    );
+
     setFlash(c, 'success', `Release "${version}" created successfully.`);
     return c.redirect('/admin/releases');
   } catch (err) {
@@ -504,6 +530,8 @@ admin.post('/releases/:id', async (c) => {
   }
 
   try {
+    const previous = await getRelease(c.env.DB, id);
+
     // Collect entry IDs from checkboxes and order field
     const entryIdsRaw = body['entry_ids'];
     const entryOrder = (body['entry_order'] as string) || '';
@@ -538,6 +566,19 @@ admin.post('/releases/:id', async (c) => {
       await publishRelease(c.env.DB, id);
     }
 
+    const url = new URL(c.req.url);
+    const baseUrl = c.env.BASE_URL || `${url.protocol}//${url.host}`;
+    const versionsToPurge = new Set<string>([version]);
+    if (previous && previous.version !== version) {
+      versionsToPurge.add(previous.version);
+    }
+    c.executionCtx.waitUntil(
+      purgePublicCache(
+        baseUrl,
+        [...versionsToPurge].map((v) => `/releases/${encodeURIComponent(v)}`),
+      ),
+    );
+
     setFlash(c, 'success', `Release "${version}" updated successfully.`);
     return c.redirect(`/admin/releases/${id}`);
   } catch (err) {
@@ -556,10 +597,18 @@ admin.post('/releases/:id/delete', async (c) => {
   }
 
   try {
+    const existing = await getRelease(c.env.DB, id);
     const deleted = await deleteRelease(c.env.DB, id);
     if (!deleted) {
       setFlash(c, 'error', 'Release not found.');
     } else {
+      if (existing) {
+        const url = new URL(c.req.url);
+        const baseUrl = c.env.BASE_URL || `${url.protocol}//${url.host}`;
+        c.executionCtx.waitUntil(
+          purgePublicCache(baseUrl, [`/releases/${encodeURIComponent(existing.version)}`]),
+        );
+      }
       setFlash(c, 'success', 'Release deleted successfully.');
     }
   } catch (err) {
@@ -584,6 +633,11 @@ admin.post('/releases/:id/publish', async (c) => {
       setFlash(c, 'error', 'Release not found.');
       return c.redirect('/admin/releases');
     }
+    const url = new URL(c.req.url);
+    const baseUrl = c.env.BASE_URL || `${url.protocol}//${url.host}`;
+    c.executionCtx.waitUntil(
+      purgePublicCache(baseUrl, [`/releases/${encodeURIComponent(release.version)}`]),
+    );
     setFlash(c, 'success', `Release "${release.version}" published.`);
     return c.redirect(`/admin/releases/${id}`);
   } catch (err) {

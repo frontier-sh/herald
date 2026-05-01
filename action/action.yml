@@ -1,5 +1,6 @@
 name: 'Herald Changelog'
-description: 'Send changelog entries to your Herald instance'
+description: 'Send changelog entries to your Herald instance and sync them to a release'
+author: 'Herald'
 branding:
   icon: 'book-open'
   color: 'blue'
@@ -24,11 +25,48 @@ inputs:
   section:
     description: 'Section name for product area grouping (e.g. Core, Desktop, API)'
     required: false
+  version:
+    description: 'Release version to attach this entry to (e.g. v1.2.3). Defaults to release tag on release events, or `git describe --tags --exact-match HEAD` on push events.'
+    required: false
+  release-title:
+    description: 'Release title. Defaults to the GitHub release name on release events.'
+    required: false
+  release-summary:
+    description: 'Release summary in Markdown. Defaults to the GitHub release body on release events.'
+    required: false
+  publish:
+    description: 'Publish the release immediately. Defaults to true on release events, false otherwise.'
+    required: false
+  include-paths:
+    description: 'Comma-separated git pathspecs for monorepos (e.g. apps/web/**,packages/shared/**). When set, only commits touching these paths drive the auto-collected content.'
+    required: false
+  include-merges:
+    description: 'Include merge commits in auto-collected content (default false).'
+    required: false
+    default: 'false'
+
+outputs:
+  entry-ids:
+    description: 'Comma-separated list of created entry IDs'
+    value: ${{ steps.send.outputs.entry-ids }}
+  entry-count:
+    description: 'Number of entries created'
+    value: ${{ steps.send.outputs.entry-count }}
+  release-id:
+    description: 'Herald release ID (empty when no release was attached)'
+    value: ${{ steps.send.outputs.release-id }}
+  release-version:
+    description: 'Herald release version (empty when no release was attached)'
+    value: ${{ steps.send.outputs.release-version }}
+  release-url:
+    description: 'Public URL of the release on Herald (empty when no release was attached)'
+    value: ${{ steps.send.outputs.release-url }}
 
 runs:
   using: 'composite'
   steps:
     - name: Send to Herald
+      id: send
       shell: bash
       env:
         HERALD_URL: ${{ inputs.herald-url }}
@@ -37,61 +75,16 @@ runs:
         HERALD_TITLE: ${{ inputs.title }}
         HERALD_CONTENT: ${{ inputs.content }}
         HERALD_SECTION: ${{ inputs.section }}
+        HERALD_VERSION: ${{ inputs.version }}
+        HERALD_RELEASE_TITLE: ${{ inputs.release-title }}
+        HERALD_RELEASE_SUMMARY: ${{ inputs.release-summary }}
+        HERALD_PUBLISH: ${{ inputs.publish }}
+        HERALD_INCLUDE_PATHS: ${{ inputs.include-paths }}
+        HERALD_INCLUDE_MERGES: ${{ inputs.include-merges }}
         EVENT_NAME: ${{ github.event_name }}
         RELEASE_NAME: ${{ github.event.release.name }}
         RELEASE_BODY: ${{ github.event.release.body }}
+        RELEASE_TAG: ${{ github.event.release.tag_name }}
         EVENT_BEFORE: ${{ github.event.before }}
         EVENT_AFTER: ${{ github.event.after }}
-      run: |
-        # Determine content based on event type
-        if [ "$EVENT_NAME" = "release" ]; then
-          # For release events
-          TITLE="${HERALD_TITLE:-$RELEASE_NAME}"
-          CONTENT="${HERALD_CONTENT:-$RELEASE_BODY}"
-        else
-          # For push events - collect commit messages
-          TITLE="${HERALD_TITLE:-$(git log --format='%s' -1)}"
-          if [ -z "$HERALD_CONTENT" ]; then
-            CONTENT=$(git log --format='- %s' "${EVENT_BEFORE}".."${EVENT_AFTER}" 2>/dev/null || git log --format='- %s' -1)
-          else
-            CONTENT="$HERALD_CONTENT"
-          fi
-        fi
-
-        # Fallback for empty title
-        if [ -z "$TITLE" ]; then
-          TITLE="Changelog update"
-        fi
-
-        # Build JSON payload using jq for proper escaping
-        ENTRY=$(jq -n \
-          --arg title "$TITLE" \
-          --arg content "$CONTENT" \
-          --arg category "$HERALD_CATEGORY" \
-          '{title: $title, content: $content, category: $category}')
-
-        # Add section_name if provided
-        if [ -n "$HERALD_SECTION" ]; then
-          ENTRY=$(echo "$ENTRY" | jq --arg section "$HERALD_SECTION" '. + {section_name: $section}')
-        fi
-
-        JSON=$(jq -n --argjson entry "$ENTRY" '{entries: [$entry]}')
-
-        # Send to Herald webhook
-        RESPONSE=$(curl -s -w "\n%{http_code}" \
-          -X POST "${HERALD_URL}/api/webhook" \
-          -H "Authorization: Bearer ${HERALD_API_KEY}" \
-          -H "Content-Type: application/json" \
-          -d "$JSON")
-
-        HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-        BODY=$(echo "$RESPONSE" | head -n -1)
-
-        if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
-          echo "Successfully sent changelog entry to Herald"
-          echo "$BODY" | jq . 2>/dev/null || echo "$BODY"
-        else
-          echo "Failed to send to Herald (HTTP $HTTP_CODE)"
-          echo "$BODY"
-          exit 1
-        fi
+      run: bash "${{ github.action_path }}/send.sh"

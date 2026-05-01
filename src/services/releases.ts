@@ -51,6 +51,56 @@ export async function listReleases(
   return result.results;
 }
 
+export async function getReleaseByVersion(
+  db: D1Database,
+  version: string,
+): Promise<Release | null> {
+  const result = await db
+    .prepare('SELECT * FROM releases WHERE version = ?')
+    .bind(version)
+    .first<Release>();
+  return result ?? null;
+}
+
+export async function getReleaseVersionsForEntry(
+  db: D1Database,
+  entryId: number,
+): Promise<string[]> {
+  const result = await db
+    .prepare(
+      `SELECT r.version FROM releases r
+       INNER JOIN release_entries re ON re.release_id = r.id
+       WHERE re.entry_id = ?`,
+    )
+    .bind(entryId)
+    .all<{ version: string }>();
+  return result.results.map((r) => r.version);
+}
+
+export async function appendEntriesToRelease(
+  db: D1Database,
+  releaseId: number,
+  entryIds: number[],
+): Promise<void> {
+  if (entryIds.length === 0) return;
+
+  const max = await db
+    .prepare('SELECT COALESCE(MAX(sort_order), -1) AS max_order FROM release_entries WHERE release_id = ?')
+    .bind(releaseId)
+    .first<{ max_order: number }>();
+  let next = (max?.max_order ?? -1) + 1;
+
+  for (const entryId of entryIds) {
+    await db
+      .prepare(
+        'INSERT OR IGNORE INTO release_entries (release_id, entry_id, sort_order) VALUES (?, ?, ?)',
+      )
+      .bind(releaseId, entryId, next)
+      .run();
+    next += 1;
+  }
+}
+
 export async function getRelease(
   db: D1Database,
   id: number,

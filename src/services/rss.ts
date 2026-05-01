@@ -100,14 +100,15 @@ export function generateRSS(
     );
     const description = buildReleaseDescription(release, entryGrouping);
     const pubDate = formatRssDate(release.published_at || release.created_at);
-    const guid = `${channelLink}/releases/${release.id}`;
+    const link = `${channelLink}/releases/${encodeURIComponent(release.version)}`;
 
     items += `
     <item>
       <title>${title}</title>
+      <link>${link}</link>
       <description><![CDATA[${description}]]></description>
       <pubDate>${pubDate}</pubDate>
-      <guid isPermaLink="false">${guid}</guid>
+      <guid isPermaLink="true">${link}</guid>
       <category>release</category>
     </item>`;
   }

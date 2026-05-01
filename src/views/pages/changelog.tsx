@@ -15,7 +15,7 @@ interface ChangelogProps {
   entryGrouping?: 'category' | 'section';
 }
 
-const CATEGORY_COLORS: Record<Category, { bg: string; text: string }> = {
+export const CATEGORY_COLORS: Record<Category, { bg: string; text: string }> = {
   added: { bg: '#D1FAE5', text: '#059669' },
   changed: { bg: '#DBEAFE', text: '#2563EB' },
   fixed: { bg: '#EDE9FE', text: '#7C3AED' },
@@ -24,7 +24,7 @@ const CATEGORY_COLORS: Record<Category, { bg: string; text: string }> = {
   security: { bg: '#FED7AA', text: '#EA580C' },
 };
 
-function renderMarkdown(md: string): string {
+export function renderMarkdown(md: string): string {
   if (!md) return '';
   return marked.parse(md, { async: false }) as string;
 }
@@ -50,7 +50,7 @@ function groupEntriesBySection(entries: EntryWithSection[]): Map<string | null, 
   return map;
 }
 
-function formatDate(dateStr: string): string {
+export function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'long',
@@ -99,7 +99,7 @@ const CategoryGroupEntries: FC<{ entries: EntryWithSection[]; category: Category
   </div>
 );
 
-const EntriesByCategoryView: FC<{ entries: EntryWithSection[] }> = ({ entries }) => {
+export const EntriesByCategoryView: FC<{ entries: EntryWithSection[] }> = ({ entries }) => {
   const grouped = groupEntriesByCategory(entries);
   return (
     <div class="timeline-entries">
@@ -110,7 +110,7 @@ const EntriesByCategoryView: FC<{ entries: EntryWithSection[] }> = ({ entries })
   );
 };
 
-const EntriesBySectionView: FC<{ entries: EntryWithSection[] }> = ({ entries }) => {
+export const EntriesBySectionView: FC<{ entries: EntryWithSection[] }> = ({ entries }) => {
   const sectionMap = groupEntriesBySection(entries);
   const sectionEntries: Array<[string | null, EntryWithSection[]]> = [];
 
@@ -190,6 +190,7 @@ export const Changelog: FC<ChangelogProps> = ({
             {releases.map((release) => {
               const summaryHtml = renderMarkdown(release.summary || '');
               const releaseDate = release.published_at || release.created_at;
+              const releaseHref = `/releases/${encodeURIComponent(release.version)}`;
 
               return (
                 <div class={`timeline-item${useSection ? ' timeline-item--sections' : ''}`} id={`release-${release.version}`}>
@@ -197,12 +198,14 @@ export const Changelog: FC<ChangelogProps> = ({
                   {useSection ? (
                     <>
                       <div class="timeline-sidebar">
-                        <span class="timeline-version">{release.version}</span>
+                        <a href={releaseHref} class="timeline-version timeline-version-link">{release.version}</a>
                         <span class="timeline-date">{formatDate(releaseDate)}</span>
                       </div>
                       <div class="timeline-content">
                         {release.title && (
-                          <h2 class="timeline-release-title">{release.title}</h2>
+                          <h2 class="timeline-release-title">
+                            <a href={releaseHref}>{release.title}</a>
+                          </h2>
                         )}
                         {summaryHtml && (
                           <div class="prose timeline-summary" dangerouslySetInnerHTML={{ __html: summaryHtml }} />
@@ -213,11 +216,13 @@ export const Changelog: FC<ChangelogProps> = ({
                   ) : (
                     <div class="timeline-content">
                       <div class="timeline-header">
-                        <span class="timeline-version">{release.version}</span>
+                        <a href={releaseHref} class="timeline-version timeline-version-link">{release.version}</a>
                         <span class="timeline-date">{formatDate(releaseDate)}</span>
                       </div>
                       {release.title && (
-                        <h2 class="timeline-release-title">{release.title}</h2>
+                        <h2 class="timeline-release-title">
+                          <a href={releaseHref}>{release.title}</a>
+                        </h2>
                       )}
                       {summaryHtml && (
                         <div class="prose timeline-summary" dangerouslySetInnerHTML={{ __html: summaryHtml }} />
