@@ -1,17 +1,17 @@
 import type { FC } from 'hono/jsx';
-import type { Release, Entry } from '../../db/schema';
+import type { Release, EntryWithSection } from '../../db/schema';
 import { SettingsSection } from '../components/settings-form';
 import { Changelog } from './changelog';
 
 interface ReleaseWithEntries extends Release {
-  entries: Entry[];
+  entries: EntryWithSection[];
 }
 
 interface CustomisePageProps {
   settings: Record<string, string>;
   baseUrl: string;
   previewReleases: ReleaseWithEntries[];
-  previewStandaloneEntries: Entry[];
+  previewStandaloneEntries: EntryWithSection[];
   previewProjectName: string;
   previewProjectDescription: string;
   previewLogoUrl: string | null;
