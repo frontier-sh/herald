@@ -4,7 +4,7 @@ import devServer from '@hono/vite-dev-server';
 import cloudflareAdapter from '@hono/vite-dev-server/cloudflare';
 import tailwindcss from '@tailwindcss/vite';
 
-export default defineConfig(async ({ mode }) => {
+export default defineConfig(async ({ mode, command }) => {
   if (mode === 'client') {
     return {
       plugins: [tailwindcss()],
@@ -22,16 +22,19 @@ export default defineConfig(async ({ mode }) => {
       },
     };
   }
-  return {
-    plugins: [
-      tailwindcss(),
-      build({
-        entry: './src/index.ts',
-      }),
+  const plugins = [
+    tailwindcss(),
+    build({
+      entry: './src/index.ts',
+    }),
+  ];
+  if (command === 'serve') {
+    plugins.push(
       devServer({
         adapter: await cloudflareAdapter(),
         entry: './src/index.ts',
       }),
-    ],
-  };
+    );
+  }
+  return { plugins };
 });
