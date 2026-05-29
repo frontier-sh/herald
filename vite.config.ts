@@ -9,7 +9,7 @@ export default defineConfig(async ({ mode, command }) => {
     return {
       plugins: [tailwindcss()],
       build: {
-        outDir: './dist/assets',
+        outDir: './dist/client/assets',
         rollupOptions: {
           input: ['./src/client/main.ts', './src/client/styles/main.css', './src/client/embed.ts'],
           output: {
