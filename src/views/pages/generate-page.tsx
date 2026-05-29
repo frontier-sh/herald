@@ -176,6 +176,7 @@ export const GeneratePage: FC<GeneratePageProps> = ({
                           <input type="hidden" name={`title_${commit.sha}`} value={commit.title} />
                           <input type="hidden" name={`message_${commit.sha}`} value={commit.message} />
                           <input type="hidden" name={`url_${commit.sha}`} value={commit.url} />
+                          <input type="hidden" name={`date_${commit.sha}`} value={commit.date} />
                         </td>
                         <td>
                           <div>

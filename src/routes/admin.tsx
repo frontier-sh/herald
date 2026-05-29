@@ -518,6 +518,7 @@ admin.post('/generate', async (c) => {
       ((body[`title_${sha}`] as string) || '').trim() || `Commit ${sha.slice(0, 7)}`;
     const message = ((body[`message_${sha}`] as string) || '').trim() || title;
     const url = (body[`url_${sha}`] as string) || '';
+    const date = ((body[`date_${sha}`] as string) || '').trim();
     const chosenCategory = body[`category_${sha}`] as string | undefined;
     const category: Category = CATEGORIES.includes(chosenCategory as Category)
       ? (chosenCategory as Category)
@@ -530,6 +531,9 @@ admin.post('/generate', async (c) => {
         category,
         source: 'github',
         source_metadata: JSON.stringify({ sha, url, repo: sourceRepo }),
+        // Preserve the commit's own date so entries keep their real order and
+        // show when the work actually happened (not when they were imported).
+        created_at: date || undefined,
       });
 
       // Mirror the manual-create flow: queue for AI cleanup when enabled.
