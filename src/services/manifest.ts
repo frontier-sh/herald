@@ -32,7 +32,13 @@ export function buildManifest(baseUrl: string): Record<string, unknown> {
     description: 'Self-hosted changelog admin for this repository.',
     public: false,
     redirect_url: `${baseUrl}/setup/callback`,
-    callback_urls: [`${baseUrl}/auth/github/callback`],
+    callback_urls: [
+      `${baseUrl}/auth/github/callback`,
+      // The install → user-OAuth dance in setup.tsx authorizes against this
+      // path; GitHub requires every redirect_uri to match a registered
+      // callback URL exactly (or be a subpath of one).
+      `${baseUrl}/setup/oauth-callback`,
+    ],
     setup_url: `${baseUrl}/setup/installed`,
     setup_on_update: false,
     request_oauth_on_install: false,
