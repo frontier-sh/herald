@@ -3,6 +3,19 @@ name: Sync from upstream Herald
 # Opens a PR with any new commits from frontier-sh/herald. Runs daily and
 # can be triggered manually. Set HERALD_UPSTREAM in repo variables to point
 # at a different upstream (defaults to frontier-sh/herald).
+#
+# Herald is distributed via GitHub's "Use this template" feature, so a
+# downstream repo shares NO git history with the upstream. This workflow
+# therefore MERGES upstream into a branch based on the downstream's default
+# branch (using --allow-unrelated-histories for the first sync) instead of
+# resetting a branch to upstream/main — the latter produces a PR with "no
+# history in common" that GitHub refuses to open. Local customizations (e.g.
+# wrangler.jsonc) are preserved; merge conflicts are committed with markers so
+# they can be resolved in the PR.
+#
+# Requires the org-level "Allow GitHub Actions to create and approve pull
+# requests" setting to be enabled (Org → Settings → Actions → General →
+# Workflow permissions); otherwise the GITHUB_TOKEN cannot open the PR.
 
 on:
   schedule:
@@ -38,29 +51,64 @@ jobs:
 
       - name: Check for new commits
         id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          BASE_BRANCH=$(gh repo view --json defaultBranchRef -q '.defaultBranchRef.name')
+          echo "base=${BASE_BRANCH}" >> "$GITHUB_OUTPUT"
           BEHIND=$(git rev-list --count "HEAD..upstream/${UPSTREAM_BRANCH}")
           echo "behind=${BEHIND}" >> "$GITHUB_OUTPUT"
           if [ "$BEHIND" -eq 0 ]; then
-            echo "Already up to date."
+            echo "Already up to date with ${UPSTREAM}@${UPSTREAM_BRANCH}."
           else
-            echo "Behind upstream by ${BEHIND} commit(s)."
+            echo "Behind ${UPSTREAM}@${UPSTREAM_BRANCH} by ${BEHIND} commit(s)."
           fi
 
-      - name: Create sync branch
+      - name: Build sync branch
+        id: build
         if: steps.check.outputs.behind != '0'
+        env:
+          BASE_BRANCH: ${{ steps.check.outputs.base }}
         run: |
-          git checkout -B "${SYNC_BRANCH}" "upstream/${UPSTREAM_BRANCH}"
+          # If the sync branch already contains upstream's tip AND descends from
+          # the base branch, leave it alone — this avoids force-pushing over
+          # conflict resolutions made in an open PR. The base-branch check also
+          # ensures we rebuild a stale branch left by the old reset-based
+          # workflow (which shared no history with base).
+          if git fetch origin "${SYNC_BRANCH}" 2>/dev/null \
+             && git merge-base --is-ancestor "upstream/${UPSTREAM_BRANCH}" "origin/${SYNC_BRANCH}" \
+             && git merge-base --is-ancestor "origin/${BASE_BRANCH}" "origin/${SYNC_BRANCH}"; then
+            echo "Sync branch already current with upstream; leaving it as-is."
+            echo "conflicts=unknown" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git checkout -B "${SYNC_BRANCH}" "origin/${BASE_BRANCH}"
+          # --allow-unrelated-histories stitches histories together on the first
+          # sync of a template-created repo; it is a harmless no-op afterwards.
+          if git merge --no-edit --allow-unrelated-histories "upstream/${UPSTREAM_BRANCH}"; then
+            echo "conflicts=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Merge conflicts detected; committing markers for manual resolution in the PR."
+            git add -A
+            git commit --no-edit
+            echo "conflicts=true" >> "$GITHUB_OUTPUT"
+          fi
           git push --force origin "${SYNC_BRANCH}"
 
       - name: Open or update PR
         if: steps.check.outputs.behind != '0'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BASE_BRANCH: ${{ steps.check.outputs.base }}
         run: |
-          BASE_BRANCH=$(gh repo view --json defaultBranchRef -q '.defaultBranchRef.name')
-          EXISTING=$(gh pr list --head "${SYNC_BRANCH}" --base "${BASE_BRANCH}" --state open --json number -q '.[0].number')
           BODY="Automated sync from \`${UPSTREAM}@${UPSTREAM_BRANCH}\`. Behind by ${{ steps.check.outputs.behind }} commit(s). Review the diff and merge to deploy."
+          if [ "${{ steps.build.outputs.conflicts }}" = "true" ]; then
+            BODY="${BODY}
+
+          ⚠️ This merge had conflicts. They are committed with conflict markers on \`${SYNC_BRANCH}\` — resolve them on that branch before merging."
+          fi
+          EXISTING=$(gh pr list --head "${SYNC_BRANCH}" --base "${BASE_BRANCH}" --state open --json number -q '.[0].number')
           if [ -z "$EXISTING" ]; then
             gh pr create \
               --head "${SYNC_BRANCH}" \
