@@ -60,7 +60,7 @@ In the Cloudflare dashboard, go to **Workers & Pages > herald > Settings > Build
 
 Open your deployment URL. Herald detects that GitHub auth is not configured and walks you through:
 
-1. **Create GitHub App** — one click. Herald POSTs a manifest to GitHub; you confirm the App on GitHub's screen; GitHub redirects back with the App's credentials, which Herald stores in your D1 database.
+1. **Create GitHub App** — one click. Herald POSTs a manifest to GitHub; you confirm the App on GitHub's screen; GitHub redirects back with the App's credentials, which Herald stores in your D1 database. Leave the **organization** field blank to create the App on your personal account, or enter an org slug to create it under an organization you own (you must be an org **owner**). Because the App is private, it can only be installed on the account that owns it — so if you want to gate access to an org repository, create the App under that org.
 2. **Install on a repository** — pick the repo whose collaborators should have access. Only collaborators of that repo will be able to sign in to the admin panel.
 3. **Done** — you're redirected to the login page and can sign in with GitHub.
 

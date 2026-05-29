@@ -45,10 +45,17 @@ export const SetupStart: FC<StartProps> = ({ manifest, baseUrl, state }) => (
       <p class="login-subtitle">One-click setup</p>
     </div>
     <p class="setup-text">
-      Herald will create a private GitHub App on your account and use it to
-      gate the admin panel to your repository's collaborators. No copy/paste,
-      no client secrets — GitHub generates them and hands them straight back to
-      this deployment.
+      Herald will create a private GitHub App and use it to gate the admin
+      panel to your repository's collaborators. No copy/paste, no client
+      secrets — GitHub generates them and hands them straight back to this
+      deployment.
+    </p>
+    <p class="setup-text">
+      <strong>Where should the App live?</strong> Leave the field below blank
+      to create it on your personal account, or enter an organization slug to
+      create it under an organization you own. A private App can only be
+      installed on the account that owns it, so to gate access to an{' '}
+      <em>org</em> repository, create the App under that org.
     </p>
     <p class="setup-text">
       <strong>What happens next:</strong> click the button, review the App
@@ -56,19 +63,70 @@ export const SetupStart: FC<StartProps> = ({ manifest, baseUrl, state }) => (
       the repository whose collaborators should have access.
     </p>
     <form
+      id="herald-setup-form"
       action="https://github.com/settings/apps/new"
       method="post"
-      style="margin-top: 1.5rem;"
+      class="mt-6"
     >
-      <input type="hidden" name="manifest" value={manifest} />
+      <label for="herald-org" class="form-label">
+        GitHub organization (optional)
+      </label>
+      <input
+        type="text"
+        id="herald-org"
+        class="form-control mt-2 mb-4"
+        placeholder="my-org"
+        autocomplete="off"
+        autocapitalize="off"
+        spellcheck={false}
+      />
+      <input type="hidden" name="manifest" value={manifest} id="herald-manifest" />
       <input type="hidden" name="state" value={state} />
       <button type="submit" class="btn btn-primary btn-lg login-btn">
         Create GitHub App
       </button>
     </form>
-    <p class="login-info" style="margin-top: 1.25rem;">
+    <p class="login-info mt-5">
       Deployment URL: <code>{baseUrl}</code>
     </p>
+    <script
+      dangerouslySetInnerHTML={{
+        __html: `
+(function () {
+  var APP_NAME_MAX = 34;
+  var APP_NAME_PREFIX = 'Herald ';
+  function heraldAppName(label) {
+    var slug = String(label).toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+    var room = APP_NAME_MAX - APP_NAME_PREFIX.length;
+    return (APP_NAME_PREFIX + slug.slice(0, room)).slice(0, APP_NAME_MAX);
+  }
+  var form = document.getElementById('herald-setup-form');
+  var orgInput = document.getElementById('herald-org');
+  var manifestInput = document.getElementById('herald-manifest');
+  form.addEventListener('submit', function () {
+    var org = (orgInput.value || '').trim()
+      .replace(/^@/, '')
+      .replace(/^https?:\\/\\/github\\.com\\//i, '')
+      .replace(/\\/.*$/, '')
+      .trim();
+    if (org) {
+      form.action = 'https://github.com/organizations/' +
+        encodeURIComponent(org) + '/settings/apps/new';
+      try {
+        var m = JSON.parse(manifestInput.value);
+        m.name = heraldAppName(org);
+        manifestInput.value = JSON.stringify(m);
+      } catch (e) {}
+    } else {
+      form.action = 'https://github.com/settings/apps/new';
+    }
+  });
+})();
+`,
+      }}
+    />
   </Shell>
 );
 
@@ -119,7 +177,7 @@ export const SetupChooseRepo: FC<ChooseRepoProps> = ({
     </p>
     <form action="/setup/repo" method="post">
       <input type="hidden" name="installation_id" value={installationId} />
-      <select name="repo" class="form-control" style="margin: 1rem 0;">
+      <select name="repo" class="form-control my-4">
         {repos.map((r) => (
           <option value={r.full_name}>{r.full_name}</option>
         ))}
@@ -161,10 +219,10 @@ export const SetupUpgrade: FC<UpgradeProps> = ({
     <a href={appHtmlUrl} class="btn btn-primary btn-lg login-btn">
       Open App settings on GitHub
     </a>
-    <p class="login-info" style="margin-top: 1.25rem;">
+    <p class="login-info mt-5">
       Once approved, restart the setup wizard to record the new version.
     </p>
-    <form action="/setup/upgrade/acknowledge" method="post" style="margin-top: 0.75rem;">
+    <form action="/setup/upgrade/acknowledge" method="post" class="mt-3">
       <button type="submit" class="btn btn-secondary">
         I have approved the new permissions
       </button>
@@ -185,7 +243,7 @@ export const SetupError: FC<ErrorProps> = ({ message }) => (
     <div class="alert alert-danger" role="alert">
       <span>{message}</span>
     </div>
-    <a href="/setup" class="btn btn-secondary" style="margin-top: 1rem;">
+    <a href="/setup" class="btn btn-secondary mt-4">
       Start over
     </a>
   </Shell>
