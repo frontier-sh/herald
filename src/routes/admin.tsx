@@ -26,6 +26,7 @@ import { resolveModelId } from '../services/models';
 import { purgePublicCache, purgeImageCache, purgeReleasePages } from '../services/cache';
 import { uploadContentImage, uploadBrandImage, deleteImage } from '../services/images';
 import { listSections, getOrCreateSection } from '../services/sections';
+import { getAppConfig, EXPECTED_MANIFEST_VERSION } from '../services/github-app';
 import type { Category, EntryStatus, ReleaseStatus } from '../db/schema';
 
 import { fetchChangelogData } from './public';
@@ -68,9 +69,10 @@ admin.route('/onboarding', onboarding);
 
 // ─── Login ───────────────────────────────────────────────
 
-admin.get('/login', (c) => {
+admin.get('/login', async (c) => {
   const error = c.req.query('error') || undefined;
-  const repo = c.req.query('repo') || c.env.GITHUB_ALLOWED_REPO;
+  const cfg = await getAppConfig(c.env.DB);
+  const repo = c.req.query('repo') || cfg?.allowed_repo || undefined;
   return c.html(<AdminLogin error={error} repo={repo} />);
 });
 
@@ -95,8 +97,18 @@ admin.get('/', async (c) => {
   const draftEntries = await listEntries(c.env.DB, { status: 'draft' as EntryStatus });
   const recentEntries = allEntries.slice(0, 10);
 
+  const dashCfg = await getAppConfig(c.env.DB);
+  const upgradeAvailable =
+    !!dashCfg && dashCfg.manifest_version < EXPECTED_MANIFEST_VERSION;
+
   return c.html(
-    <AdminLayout title="Dashboard" currentPath="/admin" flash={flash} githubUser={c.get('githubUser')}>
+    <AdminLayout
+      title="Dashboard"
+      currentPath="/admin"
+      flash={flash}
+      githubUser={c.get('githubUser')}
+      upgradeAvailable={upgradeAvailable}
+    >
       <Dashboard
         totalEntries={allEntries.length}
         publishedCount={publishedEntries.length}

@@ -2,7 +2,7 @@
 
 **Open-source changelog app powered by Cloudflare Workers**
 
-A self-hosted changelog solution that makes it easy to track, manage, and publish software changes. Fork, deploy, and stay in sync with upstream updates.
+A self-hosted changelog solution that makes it easy to track, manage, and publish software changes. Use the template, deploy, and stay in sync with upstream updates — all from a private repo.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
@@ -18,108 +18,86 @@ A self-hosted changelog solution that makes it easy to track, manage, and publis
 - REST API + GitHub Action for CI/CD automation
 - RSS feed for subscribers
 - Public changelog page for your users
-- GitHub OAuth admin authentication (scoped to repo collaborators)
+- One-click GitHub App setup — no OAuth app to manage, scoped to repo collaborators
+- Automated upstream sync via GitHub Actions
 - Runs on Cloudflare Workers -- fast, global, free tier friendly
 
 ## Setup
 
-### 1. Fork and clone
+Setup is two parts: provision Cloudflare resources, then click through an in-app wizard that creates a private GitHub App for you. No OAuth app to create, no client IDs or secrets to copy.
 
-[Fork this repository](https://github.com/frontier-sh/herald/fork), then clone your fork:
+### 1. Create your repo from the template
+
+On [frontier-sh/herald](https://github.com/frontier-sh/herald), click **Use this template > Create a new repository** and make it private. (Unlike forking, this creates a clean repo with no public link back to upstream.)
+
+Clone it:
 
 ```sh
-git clone https://github.com/<your-username>/herald.git
-cd herald
+git clone https://github.com/<your-username>/<your-repo>.git
+cd <your-repo>
 npm install
 ```
 
-### 2. Create a GitHub OAuth App
-
-Go to [github.com/settings/developers](https://github.com/settings/developers) and create an OAuth App:
-
-- **Authorization callback URL:** `https://<your-worker>.<your-workers-subdomain>.workers.dev/auth/github/callback`
-
-Note the Client ID and Client Secret.
-
-### 3. Create the D1 database
+### 2. Create Cloudflare resources
 
 ```sh
-wrangler d1 create herald-db
-```
-
-Copy the `database_id` into `wrangler.jsonc`.
-
-### 4. Create the R2 bucket
-
-```sh
+wrangler d1 create herald-db          # copy database_id into wrangler.jsonc
 wrangler r2 bucket create herald-images
-```
-
-### 5. Create the Queue
-
-```sh
 wrangler queues create herald-queue
 ```
 
-### 6. Set secrets
-
-```sh
-wrangler secret put GITHUB_CLIENT_ID
-wrangler secret put GITHUB_CLIENT_SECRET
-wrangler secret put GITHUB_ALLOWED_REPO    # e.g. your-org/your-repo
-```
-
-### 7. Deploy
+### 3. Deploy
 
 ```sh
 npm run build && npm run deploy
 ```
 
-### 8. Connect Workers Builds
+### 4. Connect Workers Builds (auto-deploy)
 
-To auto-deploy when you push (and when you sync upstream updates):
+In the Cloudflare dashboard, go to **Workers & Pages > herald > Settings > Builds**, click **Connect**, select your repo. Build command: `npm run build`. Deploy command: `npm run deploy`.
 
-1. Go to **Cloudflare Dashboard > Workers & Pages > herald > Settings > Builds**
-2. Click **Connect** and select your forked repository
-3. Set the **build command** to `npm run build`
-4. Set the **deploy command** to `npm run deploy`
+### 5. Run the in-app GitHub App setup wizard
 
-### Staying up to date
+Open your deployment URL. Herald detects that GitHub auth is not configured and walks you through:
 
-Sync updates from upstream and your fork will auto-deploy via Workers Builds:
+1. **Create GitHub App** — one click. Herald POSTs a manifest to GitHub; you confirm the App on GitHub's screen; GitHub redirects back with the App's credentials, which Herald stores in your D1 database.
+2. **Install on a repository** — pick the repo whose collaborators should have access. Only collaborators of that repo will be able to sign in to the admin panel.
+3. **Done** — you're redirected to the login page and can sign in with GitHub.
 
-```sh
-git fetch upstream
-git merge upstream/main
-git push
-```
-
-Or use GitHub's **Sync fork** button on your fork's page.
+That's it. No `wrangler secret put`, no OAuth app, no client ID / client secret to copy.
 
 ## Local development
 
 ```sh
-cp .dev.vars.example .dev.vars   # fill in your values
+cp .dev.vars.example .dev.vars   # optional — only BASE_URL is needed
 npm run db:migrate
 npm run dev
 ```
 
-The app will be available at `http://localhost:5173`.
-
-For local development, create a separate GitHub OAuth App with the callback URL set to `http://localhost:5173/auth/github/callback`, and fill in your `.dev.vars` file.
+The app runs at `http://localhost:5173`. For local development you'll need to run through the same in-app setup wizard against a tunnel URL (e.g. `cloudflared tunnel`) since GitHub requires HTTPS callback URLs.
 
 ## Authentication
 
-Herald uses GitHub OAuth to control access to the admin panel. Only users who have access to a specific GitHub repository can sign in. Each deployment is independent -- your OAuth App and repo gate are yours alone.
+Herald uses a **GitHub App** (created once, per deployment, via the in-app wizard) to gate the admin panel. Only users who are collaborators on the configured repository can sign in.
 
-### Access control
+Access control follows the repository:
 
-Access is gated by GitHub repository visibility:
+- **Private repo (recommended)**: Only collaborators can sign in. Manage them in the repo's **Settings > Collaborators**.
+- **Public repo**: Anyone with a GitHub account can sign in.
 
-- **Private repo**: Only collaborators with access to the repo can sign in. This is the recommended setup.
-- **Public repo**: Any GitHub user can sign in (since public repos are visible to everyone).
+### Updating App permissions
 
-To restrict access, use a private repository as your `GITHUB_ALLOWED_REPO` and manage collaborators through GitHub's repository settings.
+If a new Herald release needs additional GitHub App permissions, you'll see an upgrade banner in the admin dashboard linking to `/setup/upgrade`. Click through to GitHub, approve the new permissions on your App, then click **I have approved the new permissions** to record the new manifest version.
+
+### Re-running setup
+
+If you ever need to start over (e.g. moved deployments, want to point at a different repo), delete the row in D1 and reload:
+
+```sh
+wrangler d1 execute herald-db --remote --command "DELETE FROM github_app_config WHERE id = 1"
+```
+
+Then reload — the setup wizard runs again.
 
 ## API Documentation
 
@@ -257,11 +235,9 @@ jobs:
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `GITHUB_CLIENT_ID` | Yes | OAuth App client ID |
-| `GITHUB_CLIENT_SECRET` | Yes | OAuth App client secret |
-| `GITHUB_ALLOWED_REPO` | Yes | Repository to gate access on (format: `owner/repo`) |
+| `BASE_URL` | No | Public origin of the deployment (e.g. `https://changelog.example.com`). Auto-detected from the incoming request if unset. |
 
-Set these as secrets via `wrangler secret put` or in `.dev.vars` for local development.
+GitHub App credentials and the repo access gate are stored in D1 (table `github_app_config`), populated by the in-app setup wizard. There are no GitHub-related env vars to set.
 
 ### Cloudflare Resources
 
@@ -314,6 +290,14 @@ herald/
     index.ts        # App entry point
   wrangler.jsonc    # Cloudflare Workers config
 ```
+
+## Staying in sync with upstream
+
+The repo ships with `.github/workflows/sync-upstream.yml` — a scheduled workflow that fetches new commits from `frontier-sh/herald` daily and opens a PR against your default branch. Review the diff, merge, and Workers Builds redeploys automatically.
+
+To trigger a sync immediately: **Actions > Sync from upstream Herald > Run workflow**.
+
+To point at a different upstream, set the `HERALD_UPSTREAM` repo variable (e.g. your own private fork).
 
 ## Contributing
 

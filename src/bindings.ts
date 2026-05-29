@@ -4,8 +4,5 @@ export type Bindings = {
   CHANGELOG_QUEUE: Queue;
   IMAGE_STORE: R2Bucket;
   IMAGES: ImagesBinding;
-  GITHUB_CLIENT_ID: string;
-  GITHUB_CLIENT_SECRET: string;
-  GITHUB_ALLOWED_REPO: string; // Format: "owner/repo"
   BASE_URL: string;
 };

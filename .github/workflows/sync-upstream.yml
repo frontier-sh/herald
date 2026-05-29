@@ -1,0 +1,72 @@
+name: Sync from upstream Herald
+
+# Opens a PR with any new commits from frontier-sh/herald. Runs daily and
+# can be triggered manually. Set HERALD_UPSTREAM in repo variables to point
+# at a different upstream (defaults to frontier-sh/herald).
+
+on:
+  schedule:
+    - cron: '0 9 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    env:
+      UPSTREAM: ${{ vars.HERALD_UPSTREAM || 'frontier-sh/herald' }}
+      UPSTREAM_BRANCH: ${{ vars.HERALD_UPSTREAM_BRANCH || 'main' }}
+      SYNC_BRANCH: sync/upstream
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git
+        run: |
+          git config user.name 'herald-sync[bot]'
+          git config user.email 'herald-sync@users.noreply.github.com'
+
+      - name: Add upstream remote and fetch
+        run: |
+          git remote add upstream "https://github.com/${UPSTREAM}.git"
+          git fetch upstream "${UPSTREAM_BRANCH}"
+
+      - name: Check for new commits
+        id: check
+        run: |
+          BEHIND=$(git rev-list --count "HEAD..upstream/${UPSTREAM_BRANCH}")
+          echo "behind=${BEHIND}" >> "$GITHUB_OUTPUT"
+          if [ "$BEHIND" -eq 0 ]; then
+            echo "Already up to date."
+          else
+            echo "Behind upstream by ${BEHIND} commit(s)."
+          fi
+
+      - name: Create sync branch
+        if: steps.check.outputs.behind != '0'
+        run: |
+          git checkout -B "${SYNC_BRANCH}" "upstream/${UPSTREAM_BRANCH}"
+          git push --force origin "${SYNC_BRANCH}"
+
+      - name: Open or update PR
+        if: steps.check.outputs.behind != '0'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BASE_BRANCH=$(gh repo view --json defaultBranchRef -q '.defaultBranchRef.name')
+          EXISTING=$(gh pr list --head "${SYNC_BRANCH}" --base "${BASE_BRANCH}" --state open --json number -q '.[0].number')
+          BODY="Automated sync from \`${UPSTREAM}@${UPSTREAM_BRANCH}\`. Behind by ${{ steps.check.outputs.behind }} commit(s). Review the diff and merge to deploy."
+          if [ -z "$EXISTING" ]; then
+            gh pr create \
+              --head "${SYNC_BRANCH}" \
+              --base "${BASE_BRANCH}" \
+              --title "Sync from upstream Herald" \
+              --body "$BODY"
+          else
+            gh pr edit "$EXISTING" --body "$BODY"
+          fi

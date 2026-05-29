@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type { Bindings } from '../bindings';
 import { getSetting, setSetting, getAllSettings } from '../services/settings';
+import { getAppConfig } from '../services/github-app';
 import { OnboardingLayout } from '../views/layouts/onboarding-layout';
 import { Step1Project } from '../views/pages/onboarding/step1-project';
 import { Step2Branding } from '../views/pages/onboarding/step2-branding';
@@ -84,9 +85,10 @@ onboarding.get('/3', async (c) => {
     return c.redirect('/admin');
   }
 
+  const cfg = await getAppConfig(c.env.DB);
   return c.html(
     <OnboardingLayout currentStep={3} title="GitHub">
-      <Step3GitHub repoName={c.env.GITHUB_ALLOWED_REPO} />
+      <Step3GitHub repoName={cfg?.allowed_repo ?? undefined} />
     </OnboardingLayout>,
   );
 });
