@@ -22,11 +22,9 @@ app.route('/admin', admin);
 app.route('/api', api);
 app.route('/', pub);
 
-export default app;
-
-export const queue = async (
-  batch: MessageBatch,
-  env: Bindings,
-): Promise<void> => {
-  await handleQueue(batch as any, env);
+export default {
+  fetch: app.fetch,
+  queue: async (batch: MessageBatch, env: Bindings): Promise<void> => {
+    await handleQueue(batch as any, env);
+  },
 };
