@@ -13,6 +13,9 @@ export function buildManifest(baseUrl: string): Record<string, unknown> {
     request_oauth_on_install: false,
     default_permissions: {
       metadata: 'read',
+      // Needed to read commits from the source repository when generating
+      // changelog entries from recent commits (see github-commits.ts).
+      contents: 'read',
     },
     default_events: [],
   };

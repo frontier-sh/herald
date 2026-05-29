@@ -37,6 +37,13 @@ export const Sidebar: FC<SidebarProps> = ({
           </svg>
           Entries
         </a>
+        <a href="/admin/generate" class={isActive('/admin/generate') ? 'active' : ''}>
+          <svg class="nav-icon" width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M2 5a3 1.5 0 0 0 6 0 3 1.5 0 0 0-6 0v6a3 1.5 0 0 0 6 0V5" />
+            <path d="M11.5 8.5l1.25 1.25L15 7.25" />
+          </svg>
+          Generate
+        </a>
         <a href="/admin/releases" class={isActive('/admin/releases') ? 'active' : ''}>
           <svg class="nav-icon" width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25">
             <path d="M1.5 3.5a2 2 0 0 1 2-2h3.672a2 2 0 0 1 1.414.586l5.828 5.828a2 2 0 0 1 0 2.828l-3.672 3.672a2 2 0 0 1-2.828 0L2.086 8.586A2 2 0 0 1 1.5 7.172V3.5z" />

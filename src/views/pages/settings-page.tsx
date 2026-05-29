@@ -7,13 +7,22 @@ interface SettingsPageProps {
   settings: Record<string, string>;
   apiKeys: Omit<ApiKey, 'key_hash'>[];
   newKey?: string | null;
+  sourceRepoOptions?: string[];
+  sourceRepoUpgradeAvailable?: boolean;
+  sourceRepoError?: boolean;
+  appHtmlUrl?: string;
 }
 
 export const SettingsPage: FC<SettingsPageProps> = ({
   settings,
   apiKeys,
   newKey,
+  sourceRepoOptions = [],
+  sourceRepoUpgradeAvailable = false,
+  sourceRepoError = false,
+  appHtmlUrl,
 }) => {
+  const sourceRepo = settings['source_repo'] || '';
   const autoPublish = settings['auto_publish'] === 'true';
   const aiEnabled = settings['ai_enabled'] === 'true';
   const aiModel = resolveModelId(settings['ai_model']);
@@ -34,6 +43,57 @@ export const SettingsPage: FC<SettingsPageProps> = ({
       <div class="page-header">
         <h1>Settings</h1>
       </div>
+
+      {/* Source Repository Section */}
+      <SettingsSection
+        title="Source repository"
+        description="Choose which repository Herald reads commits from when generating changelog entries from recent commits."
+      >
+        {sourceRepoUpgradeAvailable ? (
+          <div class="alert alert-warning" role="alert">
+            Reading commits needs an updated GitHub App permission.{' '}
+            <a href="/setup/upgrade">Review changes</a> to enable this.
+          </div>
+        ) : sourceRepoError ? (
+          <div class="alert alert-warning" role="alert">
+            Couldn't load the list of repositories from GitHub. Confirm the App
+            is still installed
+            {appHtmlUrl ? (
+              <>
+                {' '}on <a href={appHtmlUrl} target="_blank" rel="noopener">GitHub</a>
+              </>
+            ) : null}{' '}
+            and try again.
+          </div>
+        ) : (
+          <form method="post" action="/admin/settings/source-repo">
+            <div class="form-group">
+              <label for="source_repo" class="form-label">Repository</label>
+              <select id="source_repo" name="source_repo" class="form-select">
+                <option value="" selected={!sourceRepo}>— None —</option>
+                {sourceRepo && !sourceRepoOptions.includes(sourceRepo) && (
+                  <option value={sourceRepo} selected>{sourceRepo} (not in installation)</option>
+                )}
+                {sourceRepoOptions.map((repo) => (
+                  <option value={repo} selected={repo === sourceRepo}>{repo}</option>
+                ))}
+              </select>
+              <span class="settings-toggle-hint">
+                Only repositories the Herald GitHub App can access are listed. To
+                add one, grant the App access to it
+                {appHtmlUrl ? (
+                  <>
+                    {' '}on <a href={appHtmlUrl} target="_blank" rel="noopener">GitHub</a>
+                  </>
+                ) : null}.
+              </span>
+            </div>
+            <div class="settings-section-footer">
+              <button type="submit" class="btn btn-primary">Save</button>
+            </div>
+          </form>
+        )}
+      </SettingsSection>
 
       {/* Publishing Section */}
       <SettingsSection

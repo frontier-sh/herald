@@ -70,6 +70,10 @@ export const Dashboard: FC<DashboardProps> = ({
             <span class="quick-action-icon">+</span>
             <span>New Entry</span>
           </a>
+          <a href="/admin/generate" class="quick-action-card">
+            <span class="quick-action-icon">{'\u2728'}</span>
+            <span>Generate from Commits</span>
+          </a>
           <a href="/admin/releases" class="quick-action-card">
             <span class="quick-action-icon">{'\u2696'}</span>
             <span>Manage Releases</span>

@@ -1,5 +1,34 @@
 import type { Entry, EntryWithSection, Category, EntryStatus } from '../db/schema';
 
+/**
+ * Map a (possibly conventional-commit) message title to a changelog category.
+ * Used to seed the category when generating entries from commits.
+ */
+export function inferCategory(title: string): Category {
+  const match = title.match(/^(\w+)(\([^)]*\))?!?:/);
+  const type = match?.[1]?.toLowerCase();
+  switch (type) {
+    case 'fix':
+      return 'fixed';
+    case 'feat':
+    case 'feature':
+      return 'added';
+    case 'revert':
+      return 'removed';
+    case 'perf':
+    case 'refactor':
+    case 'style':
+    case 'build':
+    case 'chore':
+    case 'docs':
+    case 'test':
+    case 'ci':
+      return 'changed';
+    default:
+      return 'added';
+  }
+}
+
 export interface ListEntriesFilters {
   status?: EntryStatus;
   category?: Category;

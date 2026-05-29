@@ -21,6 +21,8 @@ document.addEventListener('DOMContentLoaded', () => {
   initBrandUploaders();
   initSectionCombo();
   initThemePicker();
+  initGenerateMode();
+  initGenerateSelectAll();
 });
 
 /**
@@ -812,6 +814,50 @@ function initSectionCombo(): void {
     } else if (e.key === 'Escape') {
       dropdown.style.display = 'none';
     }
+  });
+}
+
+/**
+ * Generate page: toggle between "number of commits" and "date range" inputs.
+ */
+function initGenerateMode(): void {
+  const select = document.querySelector('[data-generate-mode]') as HTMLSelectElement | null;
+  if (!select) return;
+
+  const countEl = document.querySelector<HTMLElement>('[data-mode-count]');
+  const rangeEl = document.querySelector<HTMLElement>('[data-mode-range]');
+
+  const apply = (): void => {
+    const isCount = select.value === 'count';
+    if (countEl) countEl.style.display = isCount ? '' : 'none';
+    if (rangeEl) rangeEl.style.display = isCount ? 'none' : '';
+  };
+
+  select.addEventListener('change', apply);
+  apply();
+}
+
+/**
+ * Generate page: "Select all" controls the commit checkboxes.
+ */
+function initGenerateSelectAll(): void {
+  const selectAll = document.querySelector<HTMLInputElement>('[data-select-all]');
+  if (!selectAll) return;
+
+  const checkboxes = document.querySelectorAll<HTMLInputElement>('[data-commit-checkbox]');
+
+  selectAll.addEventListener('change', () => {
+    checkboxes.forEach((cb) => {
+      cb.checked = selectAll.checked;
+    });
+  });
+
+  // Keep "select all" in sync when individual boxes change.
+  checkboxes.forEach((cb) => {
+    cb.addEventListener('change', () => {
+      const allChecked = Array.from(checkboxes).every((c) => c.checked);
+      selectAll.checked = allChecked;
+    });
   });
 }
 
