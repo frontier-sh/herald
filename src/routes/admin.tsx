@@ -9,6 +9,7 @@ import {
   updateEntry,
   deleteEntry,
   publishEntry,
+  inferCategory,
 } from '../services/entries';
 import {
   listReleases,
@@ -27,6 +28,15 @@ import { purgePublicCache, purgeImageCache, purgeReleasePages } from '../service
 import { uploadContentImage, uploadBrandImage, deleteImage } from '../services/images';
 import { listSections, getOrCreateSection } from '../services/sections';
 import { getAppConfig, EXPECTED_MANIFEST_VERSION } from '../services/github-app';
+import {
+  getInstallationToken,
+  listInstallationRepositories,
+  listRepoCommits,
+  GitHubApiError,
+  type CommitInfo,
+  type ListCommitsOptions,
+} from '../services/github-commits';
+import { CATEGORIES } from '../db/schema';
 import type { Category, EntryStatus, ReleaseStatus } from '../db/schema';
 
 import { fetchChangelogData } from './public';
@@ -39,6 +49,7 @@ import { ReleasesList } from '../views/pages/releases-list';
 import { ReleaseEdit } from '../views/pages/release-edit';
 import { SettingsPage } from '../views/pages/settings-page';
 import { CustomisePage } from '../views/pages/customise-page';
+import { GeneratePage } from '../views/pages/generate-page';
 import onboarding from './onboarding';
 
 const admin = new Hono<{
@@ -405,6 +416,151 @@ admin.post('/entries/:id/regenerate', async (c) => {
   }
 });
 
+// ─── Generate from commits ──────────────────────────────
+
+admin.get('/generate', async (c) => {
+  const flash = getFlash(c);
+  const cfg = await getAppConfig(c.env.DB);
+  if (!cfg || !cfg.installation_id || !cfg.allowed_repo) {
+    return c.redirect('/setup');
+  }
+
+  const upgradeAvailable = cfg.manifest_version < EXPECTED_MANIFEST_VERSION;
+  const sourceRepo = await getSetting(c.env.DB, 'source_repo');
+  const aiEnabled = (await getSetting(c.env.DB, 'ai_enabled')) === 'true';
+
+  const mode = c.req.query('mode') === 'range' ? 'range' : 'count';
+  const countParam = parseInt(c.req.query('count') || '', 10);
+  const count = !isNaN(countParam) && countParam > 0 ? Math.min(countParam, 200) : 20;
+  const since = c.req.query('since') || '';
+  const until = c.req.query('until') || '';
+  const excludeMerges = c.req.query('exclude_merges') === 'true';
+  const hasQuery = !!c.req.query('mode');
+
+  let commits: CommitInfo[] | undefined;
+  let fetched = false;
+  let error: string | undefined;
+
+  if (hasQuery && sourceRepo && !upgradeAvailable) {
+    try {
+      const token = await getInstallationToken(cfg.app_id, cfg.pem, cfg.installation_id);
+      const opts: ListCommitsOptions = {};
+      if (mode === 'range') {
+        if (since) opts.since = `${since}T00:00:00Z`;
+        if (until) opts.until = `${until}T23:59:59Z`;
+      } else {
+        opts.count = count;
+      }
+      commits = await listRepoCommits(token, sourceRepo, opts);
+      if (excludeMerges) {
+        commits = commits.filter((commit) => !commit.isMerge);
+      }
+      fetched = true;
+    } catch (err) {
+      fetched = true;
+      commits = [];
+      if (err instanceof GitHubApiError && err.status === 403) {
+        error = `Herald can't read ${sourceRepo}. Make sure the GitHub App has been granted "contents" (read) access to this repository on GitHub.`;
+      } else if (err instanceof GitHubApiError && err.status === 404) {
+        error = `Repository "${sourceRepo}" wasn't found, or the GitHub App doesn't have access to it.`;
+      } else {
+        error = 'Failed to fetch commits from GitHub. Please try again.';
+      }
+    }
+  }
+
+  return c.html(
+    <AdminLayout
+      title="Generate from commits"
+      currentPath="/admin/generate"
+      flash={flash}
+      githubUser={c.get('githubUser')}
+      upgradeAvailable={upgradeAvailable}
+    >
+      <GeneratePage
+        sourceRepo={sourceRepo}
+        upgradeAvailable={upgradeAvailable}
+        appHtmlUrl={cfg.html_url}
+        aiEnabled={aiEnabled}
+        commits={commits}
+        fetched={fetched}
+        mode={mode}
+        count={count}
+        since={since}
+        until={until}
+        excludeMerges={excludeMerges}
+        error={error}
+      />
+    </AdminLayout>,
+  );
+});
+
+admin.post('/generate', async (c) => {
+  const body = await c.req.parseBody({ all: true });
+  const raw = body['selected'];
+  const shas = Array.isArray(raw)
+    ? raw.map(String)
+    : raw
+      ? [String(raw)]
+      : [];
+
+  if (shas.length === 0) {
+    setFlash(c, 'error', 'Select at least one commit to generate from.');
+    return c.redirect('/admin/generate');
+  }
+
+  const aiEnabled = (await getSetting(c.env.DB, 'ai_enabled')) === 'true';
+  const sourceRepo = (await getSetting(c.env.DB, 'source_repo')) || '';
+
+  let created = 0;
+  for (const sha of shas) {
+    const title =
+      ((body[`title_${sha}`] as string) || '').trim() || `Commit ${sha.slice(0, 7)}`;
+    const message = ((body[`message_${sha}`] as string) || '').trim() || title;
+    const url = (body[`url_${sha}`] as string) || '';
+    const chosenCategory = body[`category_${sha}`] as string | undefined;
+    const category: Category = CATEGORIES.includes(chosenCategory as Category)
+      ? (chosenCategory as Category)
+      : inferCategory(title);
+
+    try {
+      const entry = await createEntry(c.env.DB, {
+        title,
+        content: message,
+        category,
+        source: 'github',
+        source_metadata: JSON.stringify({ sha, url, repo: sourceRepo }),
+      });
+
+      // Mirror the manual-create flow: queue for AI cleanup when enabled.
+      if (aiEnabled && message) {
+        await c.env.DB.prepare(
+          'UPDATE entries SET raw_content = ?, ai_status = ? WHERE id = ?',
+        ).bind(message, 'pending', entry.id).run();
+        await enqueueAISummarization(c.env.CHANGELOG_QUEUE, entry.id, message);
+      }
+      created++;
+    } catch (err) {
+      // Skip the failed commit and continue with the rest.
+    }
+  }
+
+  if (created === 0) {
+    setFlash(c, 'error', 'Failed to create entries from the selected commits.');
+    return c.redirect('/admin/generate');
+  }
+
+  const noun = created === 1 ? 'entry' : 'entries';
+  setFlash(
+    c,
+    'success',
+    aiEnabled
+      ? `Created ${created} draft ${noun} — AI is polishing them now.`
+      : `Created ${created} draft ${noun}.`,
+  );
+  return c.redirect('/admin/entries');
+});
+
 // ─── Releases List ──────────────────────────────────────
 
 admin.get('/releases', async (c) => {
@@ -711,11 +867,62 @@ admin.get('/settings', async (c) => {
   const apiKeys = await listApiKeys(c.env.DB);
   const newKey = c.req.query('newKey') || null;
 
+  // Populate the source-repository picker from the App installation's repos.
+  const cfg = await getAppConfig(c.env.DB);
+  const upgradeAvailable = !!cfg && cfg.manifest_version < EXPECTED_MANIFEST_VERSION;
+  let sourceRepoOptions: string[] = [];
+  let sourceRepoError = false;
+  if (cfg && cfg.installation_id && !upgradeAvailable) {
+    try {
+      const token = await getInstallationToken(cfg.app_id, cfg.pem, cfg.installation_id);
+      const repos = await listInstallationRepositories(token);
+      sourceRepoOptions = repos.map((r) => r.full_name).sort();
+    } catch {
+      sourceRepoError = true;
+    }
+  }
+
   return c.html(
-    <AdminLayout title="Settings" currentPath="/admin/settings" flash={flash} githubUser={c.get('githubUser')}>
-      <SettingsPage settings={settings} apiKeys={apiKeys} newKey={newKey} />
+    <AdminLayout
+      title="Settings"
+      currentPath="/admin/settings"
+      flash={flash}
+      githubUser={c.get('githubUser')}
+      upgradeAvailable={upgradeAvailable}
+    >
+      <SettingsPage
+        settings={settings}
+        apiKeys={apiKeys}
+        newKey={newKey}
+        sourceRepoOptions={sourceRepoOptions}
+        sourceRepoUpgradeAvailable={upgradeAvailable}
+        sourceRepoError={sourceRepoError}
+        appHtmlUrl={cfg?.html_url}
+      />
     </AdminLayout>,
   );
+});
+
+// ─── Settings: Source Repository ────────────────────────
+
+admin.post('/settings/source-repo', async (c) => {
+  const body = await c.req.parseBody();
+  const sourceRepo = ((body['source_repo'] as string) || '').trim();
+
+  try {
+    await setSetting(c.env.DB, 'source_repo', sourceRepo);
+    setFlash(
+      c,
+      'success',
+      sourceRepo
+        ? `Source repository set to ${sourceRepo}.`
+        : 'Source repository cleared.',
+    );
+  } catch (err) {
+    setFlash(c, 'error', 'Failed to save source repository.');
+  }
+
+  return c.redirect('/admin/settings');
 });
 
 // ─── Settings: General ──────────────────────────────────

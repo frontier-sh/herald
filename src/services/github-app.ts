@@ -6,7 +6,7 @@ const USER_AGENT = 'Herald-Changelog';
 // Bump when the manifest in src/services/manifest.ts requires permissions
 // or events that earlier deployments would not have approved. Deployments
 // with a lower manifest_version see an upgrade banner.
-export const EXPECTED_MANIFEST_VERSION = 1;
+export const EXPECTED_MANIFEST_VERSION = 2;
 
 export async function getAppConfig(
   db: D1Database,
