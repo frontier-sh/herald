@@ -1,9 +1,9 @@
 import { createMiddleware } from 'hono/factory';
-import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
+import { getCookie, deleteCookie } from 'hono/cookie';
 import type { Bindings } from '../bindings';
 import { validateApiKey } from '../services/api-keys';
+import { getAppConfig } from '../services/github-app';
 
-// HMAC-SHA256 signing for session cookies
 export async function signValue(
   value: string,
   secret: string,
@@ -35,10 +35,6 @@ export async function verifySignature(
   return expected === signature;
 }
 
-/**
- * API key authentication middleware.
- * Extracts Bearer token from Authorization header and validates against stored API keys.
- */
 export const apiKeyAuth = createMiddleware<{ Bindings: Bindings }>(
   async (c, next) => {
     const authHeader = c.req.header('Authorization');
@@ -61,26 +57,24 @@ type AdminAuthEnv = {
   Variables: { githubUser: string };
 };
 
-/**
- * Admin authentication middleware.
- * Checks for a valid signed GitHub session cookie. Redirects to /admin/login if not authenticated.
- * Cookie format: "github:{username}:{expiry_ms}.{hmac_signature}"
- */
+// Admin auth: verifies a signed GitHub session cookie against the
+// session_secret stored in D1.
+// Cookie format: "github:{username}:{expiry_ms}.{hmac_signature}"
 export const adminAuth = createMiddleware<AdminAuthEnv>(async (c, next) => {
   const path = new URL(c.req.url).pathname;
-
-  // Exclude login route from auth check
   if (path === '/admin/login') {
     await next();
     return;
   }
+
+  const cfg = await getAppConfig(c.env.DB);
+  if (!cfg) return c.redirect('/setup');
 
   const sessionCookie = getCookie(c, 'herald_session');
   if (!sessionCookie) {
     return c.redirect('/admin/login');
   }
 
-  // Cookie format: "github:{username}:{expiry}.{signature}"
   const dotIndex = sessionCookie.lastIndexOf('.');
   if (dotIndex === -1) {
     return c.redirect('/admin/login');
@@ -89,16 +83,11 @@ export const adminAuth = createMiddleware<AdminAuthEnv>(async (c, next) => {
   const value = sessionCookie.slice(0, dotIndex);
   const signature = sessionCookie.slice(dotIndex + 1);
 
-  const valid = await verifySignature(
-    value,
-    signature,
-    c.env.GITHUB_CLIENT_SECRET,
-  );
+  const valid = await verifySignature(value, signature, cfg.session_secret);
   if (!valid) {
     return c.redirect('/admin/login');
   }
 
-  // Parse session value: "github:{username}:{expiry_ms}"
   const parts = value.split(':');
   if (parts.length !== 3 || parts[0] !== 'github') {
     return c.redirect('/admin/login');
@@ -107,7 +96,6 @@ export const adminAuth = createMiddleware<AdminAuthEnv>(async (c, next) => {
   const [, username, expiryStr] = parts;
   const expiry = parseInt(expiryStr, 10);
   if (isNaN(expiry) || Date.now() > expiry) {
-    // Session expired — clear the stale cookie
     deleteCookie(c, 'herald_session', { path: '/admin' });
     return c.redirect('/admin/login');
   }

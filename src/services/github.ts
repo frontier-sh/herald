@@ -2,9 +2,9 @@ const GITHUB_API = 'https://api.github.com';
 const GITHUB_AUTH = 'https://github.com/login/oauth';
 const USER_AGENT = 'Herald-Changelog';
 
-/**
- * Build the GitHub OAuth authorization URL.
- */
+// User-to-server OAuth authorize URL for a GitHub App. Scopes are not
+// passed — a GitHub App's user-token permissions are fixed by the App's
+// installation, not by the request.
 export function getGitHubAuthUrl(
   clientId: string,
   redirectUri: string,
@@ -13,7 +13,6 @@ export function getGitHubAuthUrl(
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
-    scope: 'repo read:org',
     state,
   });
   return `${GITHUB_AUTH}/authorize?${params.toString()}`;
@@ -96,13 +95,6 @@ export async function checkRepoAccess(
     console.error(
       `checkRepoAccess failed for "${repo}": ${res.status} ${res.statusText} — ${body}`,
     );
-    if (res.status === 403) {
-      console.error(
-        'Hint: If this repo belongs to a GitHub organization, the organization may need to approve this OAuth app. ' +
-          'Visit https://github.com/settings/connections/applications/<client_id> and request org access, ' +
-          'or ask an org owner to approve it under Organization Settings > Third-party access.',
-      );
-    }
   }
 
   return res.ok;

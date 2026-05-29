@@ -83,3 +83,20 @@ export interface ApiKey {
   created_at: string;
   last_used_at: string | null;
 }
+
+export interface GitHubAppConfig {
+  id: 1;
+  app_id: number;
+  slug: string;
+  client_id: string;
+  client_secret: string;
+  webhook_secret: string | null;
+  pem: string;
+  html_url: string;
+  installation_id: number | null;
+  allowed_repo: string | null;
+  manifest_version: number;
+  session_secret: string;
+  created_at: string;
+  updated_at: string;
+}
