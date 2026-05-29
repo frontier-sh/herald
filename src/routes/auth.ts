@@ -6,9 +6,11 @@ import {
   getGitHubAuthUrl,
   exchangeCodeForToken,
   getGitHubUser,
-  checkRepoAccess,
 } from '../services/github';
-import { getAppConfig } from '../services/github-app';
+import {
+  getAppConfig,
+  listInstallationRepositoriesForUser,
+} from '../services/github-app';
 
 const auth = new Hono<{ Bindings: Bindings }>();
 
@@ -34,7 +36,9 @@ auth.get('/github', async (c) => {
 
 auth.get('/github/callback', async (c) => {
   const cfg = await getAppConfig(c.env.DB);
-  if (!cfg || !cfg.allowed_repo) return c.redirect('/setup');
+  if (!cfg || !cfg.allowed_repo || !cfg.installation_id) {
+    return c.redirect('/setup');
+  }
 
   const code = c.req.query('code');
   const state = c.req.query('state');
@@ -83,7 +87,19 @@ auth.get('/github/callback', async (c) => {
     return c.redirect('/admin/login?error=oauth_failed');
   }
 
-  const hasAccess = await checkRepoAccess(accessToken, cfg.allowed_repo);
+  // Verify the user can access the configured repo *through this App's
+  // installation* — not merely any repo of the same name they happen to
+  // reach. The user token only lists repos in the intersection of the
+  // installation and the user's own access, so a match here proves both.
+  const repos = await listInstallationRepositoriesForUser(
+    accessToken,
+    cfg.installation_id,
+  );
+  if (!repos) {
+    return c.redirect('/admin/login?error=oauth_failed');
+  }
+  const target = cfg.allowed_repo.toLowerCase();
+  const hasAccess = repos.some((r) => r.full_name.toLowerCase() === target);
   if (!hasAccess) {
     return c.redirect(
       `/admin/login?error=no_access&repo=${encodeURIComponent(cfg.allowed_repo)}`,

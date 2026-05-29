@@ -68,34 +68,3 @@ export async function getGitHubUser(
   if (!data.login) return null;
   return { login: data.login, avatar_url: data.avatar_url };
 }
-
-/**
- * Check whether the authenticated user has access to a repository.
- * For private repos, returns true only if the user is a collaborator.
- * For public repos, any authenticated user will have access.
- *
- * Note: If the repository belongs to a GitHub organization with OAuth app
- * access restrictions, the OAuth app must be approved by an org owner.
- * See: https://docs.github.com/en/organizations/managing-oauth-access-to-your-organizations-data
- */
-export async function checkRepoAccess(
-  accessToken: string,
-  repo: string,
-): Promise<boolean> {
-  const res = await fetch(`${GITHUB_API}/repos/${repo}`, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      Accept: 'application/vnd.github+json',
-      'User-Agent': USER_AGENT,
-    },
-  });
-
-  if (!res.ok) {
-    const body = await res.text();
-    console.error(
-      `checkRepoAccess failed for "${repo}": ${res.status} ${res.statusText} — ${body}`,
-    );
-  }
-
-  return res.ok;
-}
