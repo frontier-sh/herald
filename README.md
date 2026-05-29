@@ -41,9 +41,9 @@ npm install
 ### 2. Create Cloudflare resources
 
 ```sh
-wrangler d1 create herald-db          # copy database_id into wrangler.jsonc
-wrangler r2 bucket create herald-images
-wrangler queues create herald-queue
+npx wrangler d1 create herald-db          # copy database_id into wrangler.jsonc
+npx wrangler r2 bucket create herald-images
+npx wrangler queues create herald-queue
 ```
 
 ### 3. Deploy
@@ -65,6 +65,26 @@ Open your deployment URL. Herald detects that GitHub auth is not configured and 
 3. **Done** — you're redirected to the login page and can sign in with GitHub.
 
 That's it. No `wrangler secret put`, no OAuth app, no client ID / client secret to copy.
+
+### Custom domain (optional)
+
+By default the Worker is served at `https://herald.<your-subdomain>.workers.dev`. To bind it to your own domain, add a `routes` entry to `wrangler.jsonc` and redeploy:
+
+```jsonc
+{
+  "name": "herald",
+  // ...
+  "routes": [
+    { "pattern": "changelog.example.com", "custom_domain": true }
+  ]
+}
+```
+
+Requirements & notes:
+
+- The domain's zone must already exist in the same Cloudflare account. Wrangler creates the custom domain and the required DNS record automatically on `npm run deploy`.
+- To stop serving the `*.workers.dev` URL as well, also set `"workers_dev": false`.
+- Set the `BASE_URL` var to your custom origin (e.g. `"https://changelog.example.com"`) so RSS/canonical links and the AI-summary cache purge use the right host.
 
 ## Local development
 
@@ -94,7 +114,7 @@ If a new Herald release needs additional GitHub App permissions, you'll see an u
 If you ever need to start over (e.g. moved deployments, want to point at a different repo), delete the row in D1 and reload:
 
 ```sh
-wrangler d1 execute herald-db --remote --command "DELETE FROM github_app_config WHERE id = 1"
+npx wrangler d1 execute herald-db --remote --command "DELETE FROM github_app_config WHERE id = 1"
 ```
 
 Then reload — the setup wizard runs again.
