@@ -28,9 +28,9 @@ export async function handleQueue(
         'UPDATE entries SET ai_status = ? WHERE id = ?',
       ).bind('processing', entryId).run();
 
-      // Get the entry's category and AI model setting
+      // Get the entry's current title/category and the AI model setting
       const entry = await env.DB.prepare(
-        'SELECT category FROM entries WHERE id = ?',
+        'SELECT title, category FROM entries WHERE id = ?',
       ).bind(entryId).first();
 
       const modelSetting = await env.DB.prepare(
@@ -46,7 +46,7 @@ export async function handleQueue(
         continue;
       }
 
-      // Run AI summarization
+      // Run AI summarization (rewrites both the title and the body)
       const summary = await summarizeContent(
         env.AI,
         rawContent,
@@ -55,10 +55,14 @@ export async function handleQueue(
         (personalitySetting?.value as string) || 'neutral',
       );
 
-      // Update entry with AI-generated content
+      // Keep the existing title/content when the AI returns nothing usable.
+      const title = summary.title || (entry.title as string);
+      const content = summary.content || rawContent;
+
+      // Update entry with AI-generated title and content
       await env.DB.prepare(
-        'UPDATE entries SET content = ?, ai_status = ?, updated_at = datetime(?) WHERE id = ?',
-      ).bind(summary, 'completed', new Date().toISOString(), entryId).run();
+        'UPDATE entries SET title = ?, content = ?, ai_status = ?, updated_at = datetime(?) WHERE id = ?',
+      ).bind(title, content, 'completed', new Date().toISOString(), entryId).run();
 
       // Purge cached public pages so the new content is visible
       if (env.BASE_URL) {

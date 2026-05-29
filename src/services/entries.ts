@@ -42,6 +42,12 @@ export interface CreateEntryData {
   section_id?: number | null;
   source?: string;
   source_metadata?: string;
+  /**
+   * ISO timestamp to preserve as the entry's `created_at` (e.g. the original
+   * commit date). When omitted, the database default of `datetime('now')` is
+   * used. Determines ordering and the date shown on draft entries.
+   */
+  created_at?: string;
 }
 
 export async function listEntries(
@@ -91,8 +97,8 @@ export async function createEntry(
 ): Promise<EntryWithSection> {
   const result = await db
     .prepare(
-      `INSERT INTO entries (title, content, category, section_id, source, source_metadata)
-       VALUES (?, ?, ?, ?, ?, ?)
+      `INSERT INTO entries (title, content, category, section_id, source, source_metadata, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, COALESCE(datetime(?), datetime('now')))
        RETURNING *`,
     )
     .bind(
@@ -102,6 +108,7 @@ export async function createEntry(
       data.section_id ?? null,
       data.source ?? 'manual',
       data.source_metadata ?? null,
+      data.created_at ?? null,
     )
     .first<Entry>();
 
