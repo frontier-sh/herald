@@ -17,6 +17,14 @@ export interface AIModel {
  */
 export const AI_MODELS: readonly AIModel[] = [
   {
+    id: '@cf/moonshotai/kimi-k2.6',
+    label: 'Kimi K2.6',
+  },
+  {
+    id: '@cf/google/gemma-4-26b-a4b-it',
+    label: 'Gemma 4 26B IT',
+  },
+  {
     id: '@cf/meta/llama-4-scout-17b-16e-instruct',
     label: 'Llama 4 Scout 17B Instruct',
   },
