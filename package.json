@@ -6,7 +6,7 @@
   "description": "Open-source changelog app powered by Cloudflare Workers",
   "scripts": {
     "dev": "vite",
-    "build": "vite build && vite build --mode client && cp -r public/* dist/assets/ 2>/dev/null || true",
+    "build": "vite build && vite build --mode client && cp -r public/* dist/client/assets/ 2>/dev/null || true",
     "deploy": "wrangler d1 migrations apply herald-db --remote && wrangler deploy",
     "db:migrate": "wrangler d1 migrations apply herald-db --local",
     "db:migrate:prod": "wrangler d1 migrations apply herald-db --remote"

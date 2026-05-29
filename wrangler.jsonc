@@ -51,7 +51,7 @@
 
   // Static assets
   "assets": {
-    "directory": "./dist/assets"
+    "directory": "./dist/client"
   },
 
   // Environment variables (set via wrangler secret or .dev.vars)
