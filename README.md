@@ -260,7 +260,7 @@ Configurable via the admin panel or the `/api/settings` endpoint:
 | `auto_publish` | false | Automatically publish entries created via API/webhook |
 | `entry_grouping` | category | How entries are grouped on the public changelog (`category` or `section`) |
 | `ai_enabled` | false | Enable AI summarization of raw changelog content |
-| `ai_model` | `@cf/meta/llama-4-scout-17b-16e-instruct` | Cloudflare Workers AI model to use |
+| `ai_model` | `@cf/moonshotai/kimi-k2.6` | Cloudflare Workers AI model to use |
 
 ## Tech Stack
 
