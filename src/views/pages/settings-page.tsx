@@ -7,20 +7,16 @@ interface SettingsPageProps {
   settings: Record<string, string>;
   apiKeys: Omit<ApiKey, 'key_hash'>[];
   newKey?: string | null;
-  sourceRepoOptions?: string[];
-  sourceRepoUpgradeAvailable?: boolean;
-  sourceRepoError?: boolean;
-  appHtmlUrl?: string;
+  // Whether a source PAT is stored. The token itself is encrypted and never
+  // sent to the client, so the page only knows that one exists.
+  hasGithubToken?: boolean;
 }
 
 export const SettingsPage: FC<SettingsPageProps> = ({
   settings,
   apiKeys,
   newKey,
-  sourceRepoOptions = [],
-  sourceRepoUpgradeAvailable = false,
-  sourceRepoError = false,
-  appHtmlUrl,
+  hasGithubToken = false,
 }) => {
   const sourceRepo = settings['source_repo'] || '';
   const autoPublish = settings['auto_publish'] === 'true';
@@ -46,53 +42,53 @@ export const SettingsPage: FC<SettingsPageProps> = ({
 
       {/* Source Repository Section */}
       <SettingsSection
-        title="Source repository"
-        description="Choose which repository Herald reads commits from when generating changelog entries from recent commits."
+        title="Generate from commits"
+        description="Read commits from a GitHub repository to draft changelog entries. Set the repository and a personal access token with read-only access to it."
       >
-        {sourceRepoUpgradeAvailable ? (
-          <div class="alert alert-warning" role="alert">
-            Reading commits needs an updated GitHub App permission.{' '}
-            <a href="/setup/upgrade">Review changes</a> to enable this.
+        <form method="post" action="/admin/settings/source-repo">
+          <div class="form-group">
+            <label for="source_repo" class="form-label">Repository</label>
+            <input
+              type="text"
+              id="source_repo"
+              name="source_repo"
+              class="form-input"
+              placeholder="owner/repo"
+              value={sourceRepo}
+              autocomplete="off"
+              autocapitalize="off"
+              spellcheck={false}
+            />
           </div>
-        ) : sourceRepoError ? (
-          <div class="alert alert-warning" role="alert">
-            Couldn't load the list of repositories from GitHub. Confirm the App
-            is still installed
-            {appHtmlUrl ? (
-              <>
-                {' '}on <a href={appHtmlUrl} target="_blank" rel="noopener">GitHub</a>
-              </>
-            ) : null}{' '}
-            and try again.
+          <div class="form-group">
+            <label for="github_pat" class="form-label">GitHub token</label>
+            <input
+              type="password"
+              id="github_pat"
+              name="github_pat"
+              class="form-input"
+              placeholder={hasGithubToken ? '•••••••• (leave blank to keep current)' : 'github_pat_… or ghp_…'}
+              autocomplete="off"
+            />
+            <span class="settings-toggle-hint">
+              A fine-grained token with read-only <strong>Contents</strong>{' '}
+              access to the repository, or a classic token with the{' '}
+              <code>repo</code> scope.{' '}
+              {hasGithubToken
+                ? 'A token is currently saved.'
+                : 'No token saved yet.'}
+            </span>
+            {hasGithubToken && (
+              <label class="settings-toggle-hint" style="display:flex; align-items:center; gap:0.5rem; margin-top:0.5rem; cursor:pointer;">
+                <input type="checkbox" name="clear_github_pat" value="true" />
+                Remove the saved token
+              </label>
+            )}
           </div>
-        ) : (
-          <form method="post" action="/admin/settings/source-repo">
-            <div class="form-group">
-              <label for="source_repo" class="form-label">Repository</label>
-              <select id="source_repo" name="source_repo" class="form-select">
-                <option value="" selected={!sourceRepo}>— None —</option>
-                {sourceRepo && !sourceRepoOptions.includes(sourceRepo) && (
-                  <option value={sourceRepo} selected>{sourceRepo} (not in installation)</option>
-                )}
-                {sourceRepoOptions.map((repo) => (
-                  <option value={repo} selected={repo === sourceRepo}>{repo}</option>
-                ))}
-              </select>
-              <span class="settings-toggle-hint">
-                Only repositories the Herald GitHub App can access are listed. To
-                add one, grant the App access to it
-                {appHtmlUrl ? (
-                  <>
-                    {' '}on <a href={appHtmlUrl} target="_blank" rel="noopener">GitHub</a>
-                  </>
-                ) : null}.
-              </span>
-            </div>
-            <div class="settings-section-footer">
-              <button type="submit" class="btn btn-primary">Save</button>
-            </div>
-          </form>
-        )}
+          <div class="settings-section-footer">
+            <button type="submit" class="btn btn-primary">Save</button>
+          </div>
+        </form>
       </SettingsSection>
 
       {/* Publishing Section */}

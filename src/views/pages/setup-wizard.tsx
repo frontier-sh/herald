@@ -152,13 +152,15 @@ export const SetupInstall: FC<InstallProps> = ({ installUrl }) => (
 
 interface ChooseRepoProps {
   repos: { full_name: string }[];
-  installationId: number;
+  // Signed token carrying the authenticated user + candidate repos; verified
+  // by POST /auth/github/select-repo.
+  auth: string;
   error?: string;
 }
 
 export const SetupChooseRepo: FC<ChooseRepoProps> = ({
   repos,
-  installationId,
+  auth,
   error,
 }) => (
   <Shell title="Choose Repository">
@@ -175,8 +177,8 @@ export const SetupChooseRepo: FC<ChooseRepoProps> = ({
       Collaborators on this repository will be allowed to sign in to the admin
       panel.
     </p>
-    <form action="/setup/repo" method="post">
-      <input type="hidden" name="installation_id" value={installationId} />
+    <form action="/auth/github/select-repo" method="post">
+      <input type="hidden" name="auth" value={auth} />
       <select name="repo" class="form-control my-4">
         {repos.map((r) => (
           <option value={r.full_name}>{r.full_name}</option>
@@ -184,47 +186,6 @@ export const SetupChooseRepo: FC<ChooseRepoProps> = ({
       </select>
       <button type="submit" class="btn btn-primary btn-lg login-btn">
         Continue
-      </button>
-    </form>
-  </Shell>
-);
-
-interface UpgradeProps {
-  appHtmlUrl: string;
-  currentVersion: number;
-  expectedVersion: number;
-}
-
-export const SetupUpgrade: FC<UpgradeProps> = ({
-  appHtmlUrl,
-  currentVersion,
-  expectedVersion,
-}) => (
-  <Shell title="Upgrade Permissions">
-    <div class="login-header">
-      <h1 class="login-brand">Herald</h1>
-      <p class="login-subtitle">GitHub App permissions out of date</p>
-    </div>
-    <p class="setup-text">
-      Your deployment is configured for manifest version{' '}
-      <code>{String(currentVersion)}</code> but this Herald build expects
-      version <code>{String(expectedVersion)}</code>. New features may not
-      work until the App is updated.
-    </p>
-    <p class="setup-text">
-      Open the App settings on GitHub, review the requested permissions, and
-      approve the changes. GitHub will prompt repository owners to accept the
-      new permissions.
-    </p>
-    <a href={appHtmlUrl} class="btn btn-primary btn-lg login-btn">
-      Open App settings on GitHub
-    </a>
-    <p class="login-info mt-5">
-      Once approved, restart the setup wizard to record the new version.
-    </p>
-    <form action="/setup/upgrade/acknowledge" method="post" class="mt-3">
-      <button type="submit" class="btn btn-secondary">
-        I have approved the new permissions
       </button>
     </form>
   </Shell>

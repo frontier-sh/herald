@@ -5,12 +5,14 @@
   "workers_dev": true,
   "preview_urls": false,
 
-  // D1 Database
+  // D1 Database. No database_id is hardcoded: Cloudflare auto-provisions the
+  // database (by name) on the first deploy and via the Deploy to Cloudflare
+  // button, which keeps this file byte-identical to upstream so updates merge
+  // cleanly. Set a custom domain in the Cloudflare dashboard, not here.
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "herald-db",
-      "database_id": "",
       "migrations_dir": "migrations"
     }
   ],

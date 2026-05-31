@@ -1,3 +1,6 @@
-GITHUB_CLIENT_ID=your_github_oauth_app_client_id
-GITHUB_CLIENT_SECRET=your_github_oauth_app_client_secret
-GITHUB_ALLOWED_REPO=owner/repo
+# Local dev vars (optional). GitHub App credentials are created by the in-app
+# setup wizard and stored in D1 — there are no GitHub secrets to set here.
+
+# Public origin of the deployment. Auto-detected from the request if unset;
+# set it when you need stable absolute URLs locally (e.g. behind a tunnel).
+BASE_URL=

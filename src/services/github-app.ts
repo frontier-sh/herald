@@ -1,12 +1,8 @@
 import type { GitHubAppConfig } from '../db/schema';
+import { encryptSecret, decryptSecret } from './secrets';
 
 const GITHUB_API = 'https://api.github.com';
 const USER_AGENT = 'Herald-Changelog';
-
-// Bump when the manifest in src/services/manifest.ts requires permissions
-// or events that earlier deployments would not have approved. Deployments
-// with a lower manifest_version see an upgrade banner.
-export const EXPECTED_MANIFEST_VERSION = 2;
 
 export async function getAppConfig(
   db: D1Database,
@@ -14,11 +10,6 @@ export async function getAppConfig(
   return await db
     .prepare('SELECT * FROM github_app_config WHERE id = 1')
     .first<GitHubAppConfig>();
-}
-
-export async function isSetupComplete(db: D1Database): Promise<boolean> {
-  const cfg = await getAppConfig(db);
-  return !!(cfg && cfg.installation_id && cfg.allowed_repo);
 }
 
 export async function generateSessionSecret(): Promise<string> {
@@ -29,12 +20,8 @@ export async function generateSessionSecret(): Promise<string> {
 }
 
 export interface ManifestConversion {
-  id: number;
-  slug: string;
   client_id: string;
   client_secret: string;
-  webhook_secret: string | null;
-  pem: string;
   html_url: string;
 }
 
@@ -69,49 +56,26 @@ export async function saveInitialAppConfig(
   await db
     .prepare(
       `INSERT OR REPLACE INTO github_app_config
-       (id, app_id, slug, client_id, client_secret, webhook_secret, pem, html_url, installation_id, allowed_repo, manifest_version, session_secret, created_at, updated_at)
-       VALUES (1, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, datetime('now'), datetime('now'))`,
+       (id, client_id, client_secret, html_url, installation_id, allowed_repo, session_secret, created_at, updated_at)
+       VALUES (1, ?, ?, ?, NULL, NULL, ?, datetime('now'), datetime('now'))`,
     )
-    .bind(
-      conv.id,
-      conv.slug,
-      conv.client_id,
-      conv.client_secret,
-      conv.webhook_secret,
-      conv.pem,
-      conv.html_url,
-      EXPECTED_MANIFEST_VERSION,
-      sessionSecret,
-    )
+    .bind(conv.client_id, conv.client_secret, conv.html_url, sessionSecret)
     .run();
 }
 
-export async function setInstallation(
+// Records the installation_id once the App is installed. The access-gating
+// repo (allowed_repo) is chosen later, on the first admin login.
+export async function setInstallationId(
   db: D1Database,
   installationId: number,
-  allowedRepo: string,
 ): Promise<void> {
   await db
     .prepare(
       `UPDATE github_app_config
-       SET installation_id = ?, allowed_repo = ?, updated_at = datetime('now')
+       SET installation_id = ?, updated_at = datetime('now')
        WHERE id = 1`,
     )
-    .bind(installationId, allowedRepo)
-    .run();
-}
-
-export async function acknowledgeManifestVersion(
-  db: D1Database,
-  version: number,
-): Promise<void> {
-  await db
-    .prepare(
-      `UPDATE github_app_config
-       SET manifest_version = ?, updated_at = datetime('now')
-       WHERE id = 1`,
-    )
-    .bind(version)
+    .bind(installationId)
     .run();
 }
 
@@ -127,6 +91,46 @@ export async function setAllowedRepo(
     )
     .bind(allowedRepo)
     .run();
+}
+
+// ─── Source PAT (Generate from commits) ──────────────────
+// The token is encrypted with a key derived from session_secret and stored on
+// the single-row app config. It is write-only from the UI's perspective: it is
+// never sent back to a client, only decrypted server-side to call the API.
+
+export async function setSourceToken(
+  db: D1Database,
+  sessionSecret: string,
+  token: string,
+): Promise<void> {
+  const encrypted = await encryptSecret(token, sessionSecret);
+  await db
+    .prepare(
+      `UPDATE github_app_config
+       SET source_pat = ?, updated_at = datetime('now')
+       WHERE id = 1`,
+    )
+    .bind(encrypted)
+    .run();
+}
+
+export async function clearSourceToken(db: D1Database): Promise<void> {
+  await db
+    .prepare(
+      `UPDATE github_app_config
+       SET source_pat = NULL, updated_at = datetime('now')
+       WHERE id = 1`,
+    )
+    .run();
+}
+
+// Decrypts the stored PAT for server-side use. Returns null when none is set
+// or decryption fails (e.g. session_secret was rotated).
+export async function getSourceToken(
+  cfg: GitHubAppConfig,
+): Promise<string | null> {
+  if (!cfg.source_pat) return null;
+  return decryptSecret(cfg.source_pat, cfg.session_secret);
 }
 
 export interface InstallationRepo {
@@ -152,23 +156,4 @@ export async function listInstallationRepositoriesForUser(
   if (!res.ok) return null;
   const data = (await res.json()) as { repositories: InstallationRepo[] };
   return data.repositories;
-}
-
-// Lists installations of this App that the user has access to.
-// GET /user/installations
-export async function listUserInstallations(
-  accessToken: string,
-): Promise<{ id: number; account: { login: string } }[] | null> {
-  const res = await fetch(`${GITHUB_API}/user/installations`, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      Accept: 'application/vnd.github+json',
-      'User-Agent': USER_AGENT,
-    },
-  });
-  if (!res.ok) return null;
-  const data = (await res.json()) as {
-    installations: { id: number; account: { login: string } }[];
-  };
-  return data.installations;
 }

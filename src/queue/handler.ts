@@ -2,6 +2,8 @@ import type { Bindings } from '../bindings';
 import { summarizeContent } from '../services/ai';
 import { purgePublicCache, purgeReleasePages } from '../services/cache';
 import { getReleaseVersionsForEntry } from '../services/releases';
+import { getSetting } from '../services/settings';
+import { BASE_URL_SETTING } from '../middleware/base-url';
 
 interface QueueMessage {
   type: 'summarize';
@@ -64,12 +66,16 @@ export async function handleQueue(
         'UPDATE entries SET title = ?, content = ?, ai_status = ?, updated_at = datetime(?) WHERE id = ?',
       ).bind(title, content, 'completed', new Date().toISOString(), entryId).run();
 
-      // Purge cached public pages so the new content is visible
-      if (env.BASE_URL) {
+      // Purge cached public pages so the new content is visible. The queue has
+      // no request to read a host from, so fall back to the origin cached from
+      // admin/api traffic when BASE_URL isn't set explicitly.
+      const baseUrl =
+        env.BASE_URL || (await getSetting(env.DB, BASE_URL_SETTING));
+      if (baseUrl) {
         const versions = await getReleaseVersionsForEntry(env.DB, entryId);
         await Promise.all([
-          purgePublicCache(env.BASE_URL),
-          purgeReleasePages(env.BASE_URL, versions),
+          purgePublicCache(baseUrl),
+          purgeReleasePages(baseUrl, versions),
         ]);
       }
 
