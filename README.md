@@ -19,72 +19,56 @@ A self-hosted changelog solution that makes it easy to track, manage, and publis
 - RSS feed for subscribers
 - Public changelog page for your users
 - One-click GitHub App setup — no OAuth app to manage, scoped to repo collaborators
-- Automated upstream sync via GitHub Actions
+- One-command upstream sync (`npm run update`) to pull the latest Herald release
 - Runs on Cloudflare Workers -- fast, global, free tier friendly
 
 ## Setup
 
-Setup is two parts: provision Cloudflare resources, then click through an in-app wizard that creates a private GitHub App for you. No OAuth app to create, no client IDs or secrets to copy.
+Deploy your own copy, then click through an in-app wizard that creates a private GitHub App for you. No OAuth app to create, no client IDs or secrets to copy.
 
-### 1. Create your repo from the template
+### 1. Deploy to Cloudflare
 
-On [frontier-sh/herald](https://github.com/frontier-sh/herald), click **Use this template > Create a new repository** and make it private. (Unlike forking, this creates a clean repo with no public link back to upstream.)
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/frontier-sh/herald)
 
-Clone it:
+Click the button. Cloudflare reads `wrangler.jsonc` and, in one flow:
+
+- creates a private copy of this repo on your GitHub account,
+- auto-provisions the D1 database, R2 bucket, queue, and AI binding,
+- sets up Workers Builds so every push to your repo redeploys automatically, and
+- builds and deploys the Worker.
+
+When it finishes you'll have a live URL at `https://herald.<your-subdomain>.workers.dev`.
+
+<details>
+<summary>Prefer the CLI?</summary>
 
 ```sh
 git clone https://github.com/<your-username>/<your-repo>.git
 cd <your-repo>
 npm install
+npm run build && npm run deploy   # Cloudflare auto-provisions D1/R2/queue on first deploy
 ```
 
-### 2. Create Cloudflare resources
+Then connect Workers Builds for auto-deploy: in the dashboard go to **Workers & Pages > herald > Settings > Builds**, click **Connect**, and select your repo (build command `npm run build`, deploy command `npm run deploy`).
+</details>
 
-```sh
-npx wrangler d1 create herald-db          # copy database_id into wrangler.jsonc
-npx wrangler r2 bucket create herald-images
-npx wrangler queues create herald-queue
-```
-
-### 3. Deploy
-
-```sh
-npm run build && npm run deploy
-```
-
-### 4. Connect Workers Builds (auto-deploy)
-
-In the Cloudflare dashboard, go to **Workers & Pages > herald > Settings > Builds**, click **Connect**, select your repo. Build command: `npm run build`. Deploy command: `npm run deploy`.
-
-### 5. Run the in-app GitHub App setup wizard
+### 2. Run the in-app GitHub App setup wizard
 
 Open your deployment URL. Herald detects that GitHub auth is not configured and walks you through:
 
 1. **Create GitHub App** — one click. Herald POSTs a manifest to GitHub; you confirm the App on GitHub's screen; GitHub redirects back with the App's credentials, which Herald stores in your D1 database. Leave the **organization** field blank to create the App on your personal account, or enter an org slug to create it under an organization you own (you must be an org **owner**). Because the App is private, it can only be installed on the account that owns it — so if you want to gate access to an org repository, create the App under that org.
-2. **Install on a repository** — pick the repo whose collaborators should have access. Only collaborators of that repo will be able to sign in to the admin panel.
-3. **Done** — you're redirected to the login page and can sign in with GitHub.
+2. **Install on a repository** — pick the repo whose collaborators should have access.
+3. **Sign in with GitHub** — on your first login Herald confirms which repo gates access (auto-selected when the App is installed on just one) and signs you in. Only collaborators of that repo can reach the admin panel.
 
 That's it. No `wrangler secret put`, no OAuth app, no client ID / client secret to copy.
 
 ### Custom domain (optional)
 
-By default the Worker is served at `https://herald.<your-subdomain>.workers.dev`. To bind it to your own domain, add a `routes` entry to `wrangler.jsonc` and redeploy:
+By default the Worker is served at `https://herald.<your-subdomain>.workers.dev`. To bind your own domain, add it in the Cloudflare dashboard under **Workers & Pages > herald > Settings > Domains & Routes > Add** (the zone must already be in the same Cloudflare account).
 
-```jsonc
-{
-  "name": "herald",
-  // ...
-  "routes": [
-    { "pattern": "changelog.example.com", "custom_domain": true }
-  ]
-}
-```
+> Configure the custom domain in the dashboard rather than adding `routes` to `wrangler.jsonc`. Keeping `wrangler.jsonc` identical to upstream is what lets `npm run update` merge cleanly with no conflicts.
 
-Requirements & notes:
-
-- The domain's zone must already exist in the same Cloudflare account. Wrangler creates the custom domain and the required DNS record automatically on `npm run deploy`.
-- To stop serving the `*.workers.dev` URL as well, also set `"workers_dev": false`.
-- Set the `BASE_URL` var to your custom origin (e.g. `"https://changelog.example.com"`) so RSS/canonical links and the AI-summary cache purge use the right host.
+Then set the `BASE_URL` var (in the dashboard, or `wrangler secret put`) to your custom origin (e.g. `https://changelog.example.com`) so RSS/canonical links and the AI-summary cache purge use the right host.
 
 ## Local development
 
@@ -105,9 +89,11 @@ Access control follows the repository:
 - **Private repo (recommended)**: Only collaborators can sign in. Manage them in the repo's **Settings > Collaborators**.
 - **Public repo**: Anyone with a GitHub account can sign in.
 
-### Updating App permissions
+The App only needs `metadata: read` — just enough to confirm repo access on login. It never reads your code.
 
-If a new Herald release needs additional GitHub App permissions, you'll see an upgrade banner in the admin dashboard linking to `/setup/upgrade`. Click through to GitHub, approve the new permissions on your App, then click **I have approved the new permissions** to record the new manifest version.
+### Generate from commits (optional)
+
+To draft changelog entries from a repository's recent commits, go to **Settings > Generate from commits** and set a **Repository** (`owner/repo`) plus a **GitHub token** — a fine-grained personal access token with read-only **Contents** access to that repo (or a classic token with the `repo` scope). The token is stored in D1 and used only to read commits; commit reading is fully decoupled from login.
 
 ### Re-running setup
 
@@ -313,11 +299,15 @@ herald/
 
 ## Staying in sync with upstream
 
-The repo ships with `.github/workflows/sync-upstream.yml` — a scheduled workflow that fetches new commits from `frontier-sh/herald` daily and opens a PR against your default branch. Review the diff, merge, and Workers Builds redeploys automatically.
+When a new Herald version ships, pull it into your copy with one command:
 
-To trigger a sync immediately: **Actions > Sync from upstream Herald > Run workflow**.
+```sh
+npm run update
+```
 
-To point at a different upstream, set the `HERALD_UPSTREAM` repo variable (e.g. your own private fork).
+This fetches the latest from `frontier-sh/herald`, merges it into a `sync/upstream` branch, pushes it, and opens a pull request (using your GitHub CLI login — if `gh` isn't installed it prints a compare link instead). Because your repo is kept byte-identical to upstream, the merge is a clean fast-forward. Review the PR, merge it, and Workers Builds redeploys automatically.
+
+Requirements: a local clone of your repo and an authenticated [GitHub CLI](https://cli.github.com/) (`gh auth login`). To point at a different upstream, set `HERALD_UPSTREAM` (and optionally `HERALD_UPSTREAM_BRANCH`) when running, e.g. `HERALD_UPSTREAM=https://github.com/me/herald.git npm run update`.
 
 ## Contributing
 

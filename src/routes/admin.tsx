@@ -20,17 +20,20 @@ import {
   publishRelease,
   getReleaseVersionsForEntry,
 } from '../services/releases';
-import { getAllSettings, getSetting, setSetting } from '../services/settings';
+import { getAllSettings, getSetting, setSetting, deleteSetting } from '../services/settings';
 import { createApiKey, listApiKeys, deleteApiKey } from '../services/api-keys';
 import { enqueueAISummarization, extractAIText } from '../services/ai';
 import { resolveModelId } from '../services/models';
 import { purgePublicCache, purgeImageCache, purgeReleasePages } from '../services/cache';
 import { uploadContentImage, uploadBrandImage, deleteImage } from '../services/images';
 import { listSections, getOrCreateSection } from '../services/sections';
-import { getAppConfig, EXPECTED_MANIFEST_VERSION } from '../services/github-app';
 import {
-  getInstallationToken,
-  listInstallationRepositories,
+  getAppConfig,
+  getSourceToken,
+  setSourceToken,
+  clearSourceToken,
+} from '../services/github-app';
+import {
   listRepoCommits,
   GitHubApiError,
   type CommitInfo,
@@ -108,17 +111,12 @@ admin.get('/', async (c) => {
   const draftEntries = await listEntries(c.env.DB, { status: 'draft' as EntryStatus });
   const recentEntries = allEntries.slice(0, 10);
 
-  const dashCfg = await getAppConfig(c.env.DB);
-  const upgradeAvailable =
-    !!dashCfg && dashCfg.manifest_version < EXPECTED_MANIFEST_VERSION;
-
   return c.html(
     <AdminLayout
       title="Dashboard"
       currentPath="/admin"
       flash={flash}
       githubUser={c.get('githubUser')}
-      upgradeAvailable={upgradeAvailable}
     >
       <Dashboard
         totalEntries={allEntries.length}
@@ -425,8 +423,8 @@ admin.get('/generate', async (c) => {
     return c.redirect('/setup');
   }
 
-  const upgradeAvailable = cfg.manifest_version < EXPECTED_MANIFEST_VERSION;
   const sourceRepo = await getSetting(c.env.DB, 'source_repo');
+  const githubPat = await getSourceToken(cfg);
   const aiEnabled = (await getSetting(c.env.DB, 'ai_enabled')) === 'true';
 
   const mode = c.req.query('mode') === 'range' ? 'range' : 'count';
@@ -441,9 +439,11 @@ admin.get('/generate', async (c) => {
   let fetched = false;
   let error: string | undefined;
 
-  if (hasQuery && sourceRepo && !upgradeAvailable) {
+  if (hasQuery && sourceRepo && !githubPat) {
+    error =
+      'Add a GitHub personal access token in Settings to read commits from your source repository.';
+  } else if (hasQuery && sourceRepo && githubPat) {
     try {
-      const token = await getInstallationToken(cfg.app_id, cfg.pem, cfg.installation_id);
       const opts: ListCommitsOptions = {};
       if (mode === 'range') {
         if (since) opts.since = `${since}T00:00:00Z`;
@@ -451,7 +451,7 @@ admin.get('/generate', async (c) => {
       } else {
         opts.count = count;
       }
-      commits = await listRepoCommits(token, sourceRepo, opts);
+      commits = await listRepoCommits(githubPat, sourceRepo, opts);
       if (excludeMerges) {
         commits = commits.filter((commit) => !commit.isMerge);
       }
@@ -459,10 +459,10 @@ admin.get('/generate', async (c) => {
     } catch (err) {
       fetched = true;
       commits = [];
-      if (err instanceof GitHubApiError && err.status === 403) {
-        error = `Herald can't read ${sourceRepo}. Make sure the GitHub App has been granted "contents" (read) access to this repository on GitHub.`;
+      if (err instanceof GitHubApiError && (err.status === 403 || err.status === 401)) {
+        error = `Herald can't read ${sourceRepo}. Check that your GitHub token is valid and has read access to this repository.`;
       } else if (err instanceof GitHubApiError && err.status === 404) {
-        error = `Repository "${sourceRepo}" wasn't found, or the GitHub App doesn't have access to it.`;
+        error = `Repository "${sourceRepo}" wasn't found, or your GitHub token doesn't have access to it.`;
       } else {
         error = 'Failed to fetch commits from GitHub. Please try again.';
       }
@@ -475,12 +475,9 @@ admin.get('/generate', async (c) => {
       currentPath="/admin/generate"
       flash={flash}
       githubUser={c.get('githubUser')}
-      upgradeAvailable={upgradeAvailable}
     >
       <GeneratePage
         sourceRepo={sourceRepo}
-        upgradeAvailable={upgradeAvailable}
-        appHtmlUrl={cfg.html_url}
         aiEnabled={aiEnabled}
         commits={commits}
         fetched={fetched}
@@ -870,21 +867,7 @@ admin.get('/settings', async (c) => {
   const settings = await getAllSettings(c.env.DB);
   const apiKeys = await listApiKeys(c.env.DB);
   const newKey = c.req.query('newKey') || null;
-
-  // Populate the source-repository picker from the App installation's repos.
   const cfg = await getAppConfig(c.env.DB);
-  const upgradeAvailable = !!cfg && cfg.manifest_version < EXPECTED_MANIFEST_VERSION;
-  let sourceRepoOptions: string[] = [];
-  let sourceRepoError = false;
-  if (cfg && cfg.installation_id && !upgradeAvailable) {
-    try {
-      const token = await getInstallationToken(cfg.app_id, cfg.pem, cfg.installation_id);
-      const repos = await listInstallationRepositories(token);
-      sourceRepoOptions = repos.map((r) => r.full_name).sort();
-    } catch {
-      sourceRepoError = true;
-    }
-  }
 
   return c.html(
     <AdminLayout
@@ -892,16 +875,12 @@ admin.get('/settings', async (c) => {
       currentPath="/admin/settings"
       flash={flash}
       githubUser={c.get('githubUser')}
-      upgradeAvailable={upgradeAvailable}
     >
       <SettingsPage
         settings={settings}
         apiKeys={apiKeys}
         newKey={newKey}
-        sourceRepoOptions={sourceRepoOptions}
-        sourceRepoUpgradeAvailable={upgradeAvailable}
-        sourceRepoError={sourceRepoError}
-        appHtmlUrl={cfg?.html_url}
+        hasGithubToken={!!cfg?.source_pat}
       />
     </AdminLayout>,
   );
@@ -912,9 +891,23 @@ admin.get('/settings', async (c) => {
 admin.post('/settings/source-repo', async (c) => {
   const body = await c.req.parseBody();
   const sourceRepo = ((body['source_repo'] as string) || '').trim();
+  const githubPat = ((body['github_pat'] as string) || '').trim();
+  const clearPat = body['clear_github_pat'] === 'true';
 
   try {
     await setSetting(c.env.DB, 'source_repo', sourceRepo);
+    // The token is encrypted at rest and never sent back to the client, so the
+    // field is left blank to keep the current value; only overwrite when a new
+    // one is supplied (or explicitly cleared).
+    if (clearPat) {
+      await clearSourceToken(c.env.DB);
+    } else if (githubPat) {
+      const cfg = await getAppConfig(c.env.DB);
+      if (cfg) await setSourceToken(c.env.DB, cfg.session_secret, githubPat);
+    }
+    // Purge any token left in the settings table by earlier builds, which the
+    // API would otherwise expose in plaintext.
+    await deleteSetting(c.env.DB, 'github_pat');
     setFlash(
       c,
       'success',

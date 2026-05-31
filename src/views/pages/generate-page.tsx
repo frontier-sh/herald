@@ -5,8 +5,6 @@ import { CATEGORIES } from '../../db/schema';
 
 interface GeneratePageProps {
   sourceRepo: string | null;
-  upgradeAvailable: boolean;
-  appHtmlUrl?: string;
   aiEnabled: boolean;
   /** Present once a fetch has run. */
   commits?: CommitInfo[];
@@ -33,8 +31,6 @@ const formatDate = (dateStr: string): string => {
 
 export const GeneratePage: FC<GeneratePageProps> = ({
   sourceRepo,
-  upgradeAvailable,
-  appHtmlUrl,
   aiEnabled,
   commits,
   fetched,
@@ -56,21 +52,6 @@ export const GeneratePage: FC<GeneratePageProps> = ({
         ones into draft changelog entries
         {aiEnabled ? ', cleaned up by AI.' : '. Enable AI in Settings to have each entry polished automatically.'}
       </p>
-
-      {upgradeAvailable && (
-        <div class="alert alert-warning" role="alert" style="margin-bottom: 1.5rem;">
-          Reading commits needs an updated GitHub App permission.{' '}
-          <a href="/setup/upgrade">Review changes</a> and make sure the App has
-          access to your source repository
-          {appHtmlUrl ? (
-            <>
-              {' '}on <a href={appHtmlUrl} target="_blank" rel="noopener">GitHub</a>.
-            </>
-          ) : (
-            '.'
-          )}
-        </div>
-      )}
 
       {!sourceRepo ? (
         <div class="empty-state">

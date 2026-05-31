@@ -1,5 +1,4 @@
 // GitHub App manifest used by the setup wizard.
-// When permissions change, bump EXPECTED_MANIFEST_VERSION in github-app.ts.
 
 // GitHub App names must be globally unique across all of GitHub and are
 // capped at 34 characters. We compose "Herald <label>" where <label> is a
@@ -32,21 +31,15 @@ export function buildManifest(baseUrl: string): Record<string, unknown> {
     description: 'Self-hosted changelog admin for this repository.',
     public: false,
     redirect_url: `${baseUrl}/setup/callback`,
-    callback_urls: [
-      `${baseUrl}/auth/github/callback`,
-      // The install → user-OAuth dance in setup.tsx authorizes against this
-      // path; GitHub requires every redirect_uri to match a registered
-      // callback URL exactly (or be a subpath of one).
-      `${baseUrl}/setup/oauth-callback`,
-    ],
+    callback_urls: [`${baseUrl}/auth/github/callback`],
     setup_url: `${baseUrl}/setup/installed`,
     setup_on_update: false,
     request_oauth_on_install: false,
+    // The App is used only to gate admin login to a repository's
+    // collaborators, so `metadata: read` is all it needs. Commit reading for
+    // "Generate from commits" uses a separate PAT (see github-commits.ts).
     default_permissions: {
       metadata: 'read',
-      // Needed to read commits from the source repository when generating
-      // changelog entries from recent commits (see github-commits.ts).
-      contents: 'read',
     },
     default_events: [],
   };

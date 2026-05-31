@@ -10,7 +10,6 @@ interface AdminLayoutProps {
   currentPath?: string;
   flash?: FlashMessage | null;
   githubUser?: string;
-  upgradeAvailable?: boolean;
 }
 
 export const AdminLayout: FC<AdminLayoutProps> = ({
@@ -19,7 +18,6 @@ export const AdminLayout: FC<AdminLayoutProps> = ({
   currentPath,
   flash,
   githubUser,
-  upgradeAvailable,
 }) => {
   const pageTitle = title ? `${title} - Herald Admin` : 'Herald Admin';
 
@@ -53,12 +51,6 @@ export const AdminLayout: FC<AdminLayoutProps> = ({
           <Sidebar currentPath={currentPath} githubUser={githubUser} />
           <main class="main-content">
             <div class="content-container">
-              {upgradeAvailable && (
-                <div class="alert alert-warning" role="alert" style="margin-bottom: 1rem;">
-                  This Herald deployment has been updated and the GitHub App
-                  needs new permissions. <a href="/setup/upgrade">Review changes</a>.
-                </div>
-              )}
               {flash && (
                 <FlashMessageBanner type={flash.type} message={flash.message} />
               )}

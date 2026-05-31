@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type { Bindings } from './bindings';
 import { requireSetup } from './middleware/setup-check';
+import { recordBaseUrl } from './middleware/base-url';
 import auth from './routes/auth';
 import admin from './routes/admin';
 import api from './routes/api';
@@ -12,6 +13,12 @@ const app = new Hono<{ Bindings: Bindings }>();
 
 // /setup is the only admin-side route reachable before GitHub App config exists.
 app.route('/setup', setup);
+
+// Cache the public origin from admin/api traffic so the queue consumer can
+// reuse it. These paths precede every AI-summarization job, so the stored
+// value is always fresh by the time the queue runs.
+app.use('/admin/*', recordBaseUrl);
+app.use('/api/*', recordBaseUrl);
 
 // Everything else under /admin and /auth requires App config in D1.
 app.use('/admin/*', requireSetup);

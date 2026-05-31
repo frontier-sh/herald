@@ -32,3 +32,10 @@ export async function setSetting(
     .bind(key, value)
     .run();
 }
+
+export async function deleteSetting(
+  db: D1Database,
+  key: string,
+): Promise<void> {
+  await db.prepare('DELETE FROM settings WHERE key = ?').bind(key).run();
+}

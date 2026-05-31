@@ -9,7 +9,8 @@
     "build": "vite build && vite build --mode client && cp -r public/* dist/client/assets/ 2>/dev/null || true",
     "deploy": "wrangler d1 migrations apply herald-db --remote && wrangler deploy",
     "db:migrate": "wrangler d1 migrations apply herald-db --local",
-    "db:migrate:prod": "wrangler d1 migrations apply herald-db --remote"
+    "db:migrate:prod": "wrangler d1 migrations apply herald-db --remote",
+    "update": "bash scripts/update.sh"
   },
   "dependencies": {
     "easymde": "^2.21.0",
