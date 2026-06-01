@@ -10,6 +10,8 @@
     "deploy": "wrangler d1 migrations apply herald-db --remote && wrangler deploy",
     "db:migrate": "wrangler d1 migrations apply herald-db --local",
     "db:migrate:prod": "wrangler d1 migrations apply herald-db --remote",
+    "test": "node --test test/*.test.ts",
+    "ai:harness": "node scripts/ai-harness.mjs",
     "update": "bash scripts/update.sh"
   },
   "dependencies": {
