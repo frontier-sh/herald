@@ -37,7 +37,7 @@ else
   git remote add upstream "$UPSTREAM"
 fi
 
-echo "Fetching $UPSTREAM ($UPSTREAM_BRANCH)…"
+echo "Fetching $UPSTREAM ($UPSTREAM_BRANCH)..."
 git fetch --quiet upstream "$UPSTREAM_BRANCH"
 
 BEHIND="$(git rev-list --count "HEAD..upstream/${UPSTREAM_BRANCH}")"
@@ -45,7 +45,7 @@ if [ "$BEHIND" -eq 0 ]; then
   echo "Already up to date with upstream."
   exit 0
 fi
-echo "Behind upstream by ${BEHIND} commit(s). Building $SYNC_BRANCH…"
+echo "Behind upstream by ${BEHIND} commit(s). Building ${SYNC_BRANCH}..."
 
 git checkout -B "$SYNC_BRANCH" "$BASE_BRANCH"
 
