@@ -2,6 +2,7 @@ import type { FC } from 'hono/jsx';
 import type { ApiKey } from '../../db/schema';
 import { SettingsSection } from '../components/settings-form';
 import { AI_MODELS, DEFAULT_AI_MODEL, resolveModelId } from '../../services/models';
+import { formatInZone } from '../../services/datetime';
 
 interface SettingsPageProps {
   settings: Record<string, string>;
@@ -23,9 +24,10 @@ export const SettingsPage: FC<SettingsPageProps> = ({
   const aiEnabled = settings['ai_enabled'] === 'true';
   const aiModel = resolveModelId(settings['ai_model']);
   const aiPersonality = settings['ai_personality'] || 'neutral';
+  const timezone = settings['timezone'] || 'UTC';
   const formatDate = (dateStr: string | null): string => {
     if (!dateStr) return 'Never';
-    return new Date(dateStr).toLocaleDateString('en-US', {
+    return formatInZone(dateStr, timezone, {
       year: 'numeric',
       month: 'short',
       day: 'numeric',

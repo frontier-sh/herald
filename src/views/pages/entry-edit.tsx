@@ -7,6 +7,8 @@ interface EntryEditProps {
   sections?: Section[];
   /** When AI features are enabled, the category field offers an "Auto" option. */
   aiEnabled?: boolean;
+  /** Configured default timezone for the editable date field. */
+  timezone?: string;
 }
 
 const AiStatusBadge: FC<{ status: string | null }> = ({ status }) => {
@@ -26,7 +28,7 @@ const AiStatusBadge: FC<{ status: string | null }> = ({ status }) => {
   }
 };
 
-export const EntryEdit: FC<EntryEditProps> = ({ entry, sections = [], aiEnabled = false }) => {
+export const EntryEdit: FC<EntryEditProps> = ({ entry, sections = [], aiEnabled = false, timezone = 'UTC' }) => {
   const isEditing = !!entry;
   const pageTitle = isEditing ? 'Edit Entry' : 'New Entry';
   const action = isEditing ? `/admin/entries/${entry!.id}` : '/admin/entries';
@@ -62,7 +64,7 @@ export const EntryEdit: FC<EntryEditProps> = ({ entry, sections = [], aiEnabled 
         </div>
       </div>
 
-      <EntryForm entry={entry} sections={sections} action={action} aiEnabled={aiEnabled} />
+      <EntryForm entry={entry} sections={sections} action={action} aiEnabled={aiEnabled} timezone={timezone} />
 
       {isEditing && entry!.raw_content && (
         <details class="ai-original-content">

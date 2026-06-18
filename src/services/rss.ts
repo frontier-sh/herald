@@ -1,5 +1,6 @@
 import type { Release, EntryWithSection } from '../db/schema';
 import { marked } from 'marked';
+import { parseStoredDate, effectiveReleaseDate, effectiveEntryDate } from './datetime';
 
 interface ReleaseWithEntries extends Release {
   entries: EntryWithSection[];
@@ -20,7 +21,7 @@ function renderMarkdown(md: string): string {
 }
 
 function formatRssDate(dateStr: string): string {
-  return new Date(dateStr).toUTCString();
+  return parseStoredDate(dateStr).toUTCString();
 }
 
 function buildReleaseDescription(release: ReleaseWithEntries, grouping: 'category' | 'section'): string {
@@ -99,7 +100,7 @@ export function generateRSS(
         : release.version,
     );
     const description = buildReleaseDescription(release, entryGrouping);
-    const pubDate = formatRssDate(release.published_at || release.created_at);
+    const pubDate = formatRssDate(effectiveReleaseDate(release));
     const link = `${channelLink}/releases/${encodeURIComponent(release.version)}`;
 
     items += `
@@ -117,7 +118,7 @@ export function generateRSS(
   for (const entry of standaloneEntries) {
     const title = escapeXml(entry.title);
     const contentHtml = entry.content ? renderMarkdown(entry.content) : '';
-    const pubDate = formatRssDate(entry.published_at || entry.created_at);
+    const pubDate = formatRssDate(effectiveEntryDate(entry));
     const guid = `${channelLink}/entries/${entry.id}`;
 
     items += `

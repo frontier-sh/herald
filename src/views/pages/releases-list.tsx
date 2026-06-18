@@ -5,11 +5,13 @@ import { ReleaseCard } from '../components/release-card';
 interface ReleasesListProps {
   releases: (Release & { entry_count: number })[];
   statusFilter?: string;
+  timezone?: string;
 }
 
 export const ReleasesList: FC<ReleasesListProps> = ({
   releases,
   statusFilter = '',
+  timezone = 'UTC',
 }) => {
   return (
     <div>
@@ -36,7 +38,7 @@ export const ReleasesList: FC<ReleasesListProps> = ({
       {releases.length > 0 ? (
         <div class="releases-list">
           {releases.map((release) => (
-            <ReleaseCard release={release} />
+            <ReleaseCard release={release} timezone={timezone} />
           ))}
         </div>
       ) : (

@@ -4,6 +4,7 @@ import { listReleases, getRelease, getReleaseByVersion } from '../services/relea
 import { listEntries } from '../services/entries';
 import { getAllSettings } from '../services/settings';
 import { generateRSS } from '../services/rss';
+import { effectiveEntryDate, effectiveReleaseDate } from '../services/datetime';
 import { getCachedResponse, cacheResponse } from '../services/cache';
 import type { Release, EntryWithSection } from '../db/schema';
 
@@ -56,8 +57,10 @@ export async function fetchChangelogData(db: D1Database) {
 
   const theme = settings['theme'] || 'herald';
   const primaryColor = settings['primary_color'] || '';
+  const timezone = settings['timezone'] || 'UTC';
+  const dateGrouping = (settings['date_grouping'] as 'day' | 'month') || 'day';
 
-  return { projectName, projectDescription, releases, standaloneEntries, logoUrl, faviconUrl, entryGrouping, theme, primaryColor };
+  return { projectName, projectDescription, releases, standaloneEntries, logoUrl, faviconUrl, entryGrouping, theme, primaryColor, timezone, dateGrouping };
 }
 
 const pub = new Hono<{ Bindings: Bindings }>();
@@ -109,7 +112,7 @@ pub.get('/', async (c) => {
   const cached = await getCachedResponse(c.req.raw);
   if (cached) return cached;
 
-  const { projectName, projectDescription, releases, standaloneEntries, logoUrl, faviconUrl, entryGrouping, theme, primaryColor } =
+  const { projectName, projectDescription, releases, standaloneEntries, logoUrl, faviconUrl, entryGrouping, theme, primaryColor, timezone, dateGrouping } =
     await fetchChangelogData(c.env.DB);
 
   const response = await c.html(
@@ -128,6 +131,8 @@ pub.get('/', async (c) => {
         releases={releases}
         standaloneEntries={standaloneEntries}
         entryGrouping={entryGrouping}
+        timezone={timezone}
+        dateGrouping={dateGrouping}
       />
     </PublicLayout>,
   );
@@ -170,6 +175,7 @@ pub.get('/releases/:slug', async (c) => {
   const entryGrouping = (settings['entry_grouping'] as 'category' | 'section') || 'category';
   const theme = settings['theme'] || 'herald';
   const primaryColor = settings['primary_color'] || '';
+  const timezone = settings['timezone'] || 'UTC';
 
   const pageTitle = full.title ? `${full.version} – ${full.title}` : full.version;
   const description = full.summary || projectDescription;
@@ -188,6 +194,7 @@ pub.get('/releases/:slug', async (c) => {
         projectName={projectName}
         release={full}
         entryGrouping={entryGrouping}
+        timezone={timezone}
       />
     </PublicLayout>,
   );
@@ -204,7 +211,7 @@ pub.get('/embed', async (c) => {
   const cached = await getCachedResponse(c.req.raw);
   if (cached) return cached;
 
-  const { projectName, projectDescription, releases, standaloneEntries, faviconUrl, entryGrouping, theme, primaryColor } =
+  const { projectName, projectDescription, releases, standaloneEntries, faviconUrl, entryGrouping, theme, primaryColor, timezone, dateGrouping } =
     await fetchChangelogData(c.env.DB);
 
   const response = await c.html(
@@ -215,6 +222,8 @@ pub.get('/embed', async (c) => {
         releases={releases}
         standaloneEntries={standaloneEntries}
         entryGrouping={entryGrouping}
+        timezone={timezone}
+        dateGrouping={dateGrouping}
       />
     </EmbedLayout>,
   );
@@ -231,7 +240,7 @@ pub.get('/embed.json', async (c) => {
   const cached = await getCachedResponse(c.req.raw);
   if (cached) return cached;
 
-  const { projectName, projectDescription, releases, standaloneEntries, entryGrouping } =
+  const { projectName, projectDescription, releases, standaloneEntries, entryGrouping, timezone, dateGrouping } =
     await fetchChangelogData(c.env.DB);
 
   const url = new URL(c.req.url);
@@ -242,12 +251,15 @@ pub.get('/embed.json', async (c) => {
     projectDescription,
     changelogUrl,
     entryGrouping,
+    timezone,
+    dateGrouping,
     releases: releases.map((r) => ({
       id: r.id,
       version: r.version,
       title: r.title,
       summary: r.summary,
       published_at: r.published_at,
+      date: effectiveReleaseDate(r),
       url: `${changelogUrl}/releases/${encodeURIComponent(r.version)}`,
       entries: r.entries.map((e) => ({
         id: e.id,
@@ -256,6 +268,7 @@ pub.get('/embed.json', async (c) => {
         category: e.category,
         section: e.section_name,
         published_at: e.published_at,
+        date: effectiveEntryDate(e),
       })),
     })),
     standaloneEntries: standaloneEntries.map((e) => ({
@@ -265,6 +278,7 @@ pub.get('/embed.json', async (c) => {
       category: e.category,
       section: e.section_name,
       published_at: e.published_at,
+      date: effectiveEntryDate(e),
     })),
   };
 

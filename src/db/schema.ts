@@ -42,6 +42,8 @@ export interface Entry {
   section_id: number | null;
   status: EntryStatus;
   published_at: string | null;
+  // Editable "date of the change". Nullable; resolve via effectiveEntryDate().
+  entry_date: string | null;
   created_at: string;
   updated_at: string;
   source: Source;
@@ -61,6 +63,8 @@ export interface Release {
   summary: string;
   status: ReleaseStatus;
   published_at: string | null;
+  // Editable release date. Nullable; resolve via effectiveReleaseDate().
+  release_date: string | null;
   created_at: string;
   updated_at: string;
 }

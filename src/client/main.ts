@@ -24,7 +24,41 @@ document.addEventListener('DOMContentLoaded', () => {
   initPrimaryColor();
   initGenerateMode();
   initGenerateSelectAll();
+  initLocalDates();
 });
+
+/**
+ * Re-localise server-rendered dates to the visitor's own timezone/locale.
+ *
+ * The server renders dates in the admin-configured timezone (which also drives
+ * the date grouping). This only rewrites the visible label of each
+ * `<time data-herald-date>` element to the visitor's local time — it does NOT
+ * re-bucket the timeline, so on rare occasions a label may sit under a bucket
+ * computed for a different day. That trade-off keeps the page edge-cacheable.
+ */
+function initLocalDates(): void {
+  const els = document.querySelectorAll<HTMLTimeElement>('time[data-herald-date]');
+  if (els.length === 0) return;
+
+  els.forEach((el) => {
+    const iso = el.getAttribute('datetime');
+    if (!iso) return;
+    const date = new Date(iso);
+    if (isNaN(date.getTime())) return;
+
+    const format = el.getAttribute('data-format') === 'month' ? 'month' : 'day';
+    const opts: Intl.DateTimeFormatOptions =
+      format === 'month'
+        ? { year: 'numeric', month: 'long' }
+        : { year: 'numeric', month: 'long', day: 'numeric' };
+
+    try {
+      el.textContent = new Intl.DateTimeFormat(undefined, opts).format(date);
+    } catch {
+      /* keep server-rendered fallback */
+    }
+  });
+}
 
 /**
  * Upload an image to the server for use in markdown editors.
@@ -282,6 +316,15 @@ function initCategoryFilters(): void {
         } else {
           (group as HTMLElement).style.display = 'none';
         }
+      });
+
+      // Hide date buckets that no longer contain any visible entry group so we
+      // don't leave orphaned date headers behind.
+      document.querySelectorAll<HTMLElement>('[data-timeline-bucket]').forEach((bucket) => {
+        const hasVisible = Array.from(bucket.querySelectorAll<HTMLElement>('.entry-group')).some(
+          (g) => g.style.display !== 'none',
+        );
+        bucket.style.display = category === 'all' || hasVisible ? '' : 'none';
       });
     });
   });

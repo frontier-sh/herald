@@ -7,6 +7,7 @@ interface DashboardProps {
   publishedCount: number;
   draftCount: number;
   recentEntries: EntryWithSection[];
+  timezone?: string;
 }
 
 export const Dashboard: FC<DashboardProps> = ({
@@ -14,6 +15,7 @@ export const Dashboard: FC<DashboardProps> = ({
   publishedCount,
   draftCount,
   recentEntries,
+  timezone = 'UTC',
 }) => {
   return (
     <div>
@@ -49,7 +51,7 @@ export const Dashboard: FC<DashboardProps> = ({
         {recentEntries.length > 0 ? (
           <div class="entries-list">
             {recentEntries.map((entry) => (
-              <EntryCard entry={entry} />
+              <EntryCard entry={entry} timezone={timezone} />
             ))}
           </div>
         ) : (

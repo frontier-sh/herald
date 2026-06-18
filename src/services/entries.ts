@@ -48,6 +48,13 @@ export interface CreateEntryData {
    * used. Determines ordering and the date shown on draft entries.
    */
   created_at?: string;
+  /**
+   * Editable "date of the change" shown and grouped on the public changelog.
+   * Canonical UTC string. When omitted, defaults to the commit/created date so
+   * imported entries land on the day the work happened; on publish it falls
+   * back to `published_at` if still unset.
+   */
+  entry_date?: string;
 }
 
 export async function listEntries(
@@ -97,8 +104,8 @@ export async function createEntry(
 ): Promise<EntryWithSection> {
   const result = await db
     .prepare(
-      `INSERT INTO entries (title, content, category, section_id, source, source_metadata, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, COALESCE(datetime(?), datetime('now')))
+      `INSERT INTO entries (title, content, category, section_id, source, source_metadata, created_at, entry_date)
+       VALUES (?, ?, ?, ?, ?, ?, COALESCE(datetime(?), datetime('now')), datetime(?))
        RETURNING *`,
     )
     .bind(
@@ -112,6 +119,9 @@ export async function createEntry(
       data.source ?? 'manual',
       data.source_metadata ?? null,
       data.created_at ?? null,
+      // Editable change date. When omitted, leave NULL so display/grouping
+      // resolves via effectiveEntryDate() (published_at -> created_at).
+      data.entry_date ?? null,
     )
     .first<Entry>();
 
@@ -138,6 +148,7 @@ export async function updateEntry(
     'status',
     'source',
     'source_metadata',
+    'entry_date',
   ] as const;
 
   for (const field of allowedFields) {
@@ -180,7 +191,8 @@ export async function publishEntry(
 ): Promise<EntryWithSection | null> {
   await db
     .prepare(
-      `UPDATE entries SET status = 'published', published_at = datetime('now'), updated_at = datetime('now')
+      `UPDATE entries SET status = 'published', published_at = datetime('now'),
+         entry_date = COALESCE(entry_date, datetime('now')), updated_at = datetime('now')
        WHERE id = ?`,
     )
     .bind(id)

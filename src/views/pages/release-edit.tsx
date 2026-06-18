@@ -2,16 +2,20 @@ import type { FC } from 'hono/jsx';
 import type { Release, EntryWithSection, Category } from '../../db/schema';
 import { CATEGORIES } from '../../db/schema';
 import { CategoryBadge } from '../components/category-badge';
+import { effectiveReleaseDate, toDatetimeLocalValue } from '../../services/datetime';
 
 interface ReleaseEditProps {
   release?: Release & { entries: EntryWithSection[] };
   availableEntries?: EntryWithSection[];
+  /** Configured default timezone for the editable date field. */
+  timezone?: string;
 }
 
-export const ReleaseEdit: FC<ReleaseEditProps> = ({ release, availableEntries = [] }) => {
+export const ReleaseEdit: FC<ReleaseEditProps> = ({ release, availableEntries = [], timezone = 'UTC' }) => {
   const isEditing = !!release;
   const pageTitle = isEditing ? 'Edit Release' : 'New Release';
   const action = isEditing ? `/admin/releases/${release!.id}` : '/admin/releases';
+  const dateValue = release ? toDatetimeLocalValue(effectiveReleaseDate(release), timezone) : '';
 
   // Get the IDs of entries already in this release
   const releaseEntryIds = new Set(release?.entries?.map((e) => e.id) || []);
@@ -121,6 +125,22 @@ export const ReleaseEdit: FC<ReleaseEditProps> = ({ release, availableEntries = 
               value={release?.title ?? ''}
             />
           </div>
+        </div>
+
+        <div class="form-group">
+          <label for="release_date" class="form-label">
+            Date
+          </label>
+          <input
+            type="datetime-local"
+            id="release_date"
+            name="release_date"
+            class="form-input"
+            value={dateValue}
+          />
+          <p class="form-hint">
+            Release date. Shown and grouped on your public changelog. Times are in {timezone}.
+          </p>
         </div>
 
         <div class="form-group">

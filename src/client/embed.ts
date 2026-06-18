@@ -224,8 +224,14 @@
   }
 
   function formatDate(dateStr: string): string {
+    if (!dateStr) return '';
+    // Stored timestamps are UTC; SQLite's "YYYY-MM-DD HH:MM:SS" form has no
+    // timezone marker, so normalise to UTC before formatting in local time.
+    var iso = /[zZ]$|[+-]\d{2}:?\d{2}$/.test(dateStr)
+      ? dateStr.replace(' ', 'T')
+      : dateStr.replace(' ', 'T') + 'Z';
     try {
-      return new Date(dateStr).toLocaleDateString('en-US', {
+      return new Date(iso).toLocaleDateString(undefined, {
         year: 'numeric', month: 'long', day: 'numeric',
       });
     } catch (e) {
@@ -298,8 +304,9 @@
       html += '<div class="herald-release">';
       html += '<div class="herald-release-header">';
       html += '<span class="herald-version">' + esc(rel.version) + '</span>';
-      if (rel.published_at) {
-        html += '<span class="herald-date">' + formatDate(rel.published_at) + '</span>';
+      var relDate = rel.date || rel.published_at;
+      if (relDate) {
+        html += '<span class="herald-date">' + formatDate(relDate) + '</span>';
       }
       html += '</div>';
       if (rel.title) {

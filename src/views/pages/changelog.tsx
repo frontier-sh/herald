@@ -2,6 +2,15 @@ import type { FC } from 'hono/jsx';
 import type { Release, EntryWithSection, Category } from '../../db/schema';
 import { CATEGORIES } from '../../db/schema';
 import { marked } from 'marked';
+import {
+  type DateGrouping,
+  bucketLabel,
+  dateBucketKey,
+  effectiveEntryDate,
+  effectiveReleaseDate,
+  parseStoredDate,
+  toIsoUtc,
+} from '../../services/datetime';
 
 interface ReleaseWithEntries extends Release {
   entries: EntryWithSection[];
@@ -13,6 +22,44 @@ interface ChangelogProps {
   releases: ReleaseWithEntries[];
   standaloneEntries: EntryWithSection[];
   entryGrouping?: 'category' | 'section';
+  timezone?: string;
+  dateGrouping?: DateGrouping;
+}
+
+interface DateBucket {
+  key: string;
+  /** Representative (latest) date within the bucket, for the label. */
+  date: string;
+  releases: ReleaseWithEntries[];
+  standalone: EntryWithSection[];
+}
+
+// Group releases and standalone entries into date buckets (computed in the
+// configured timezone), newest first. Releases come before loose entries within
+// a bucket.
+function buildDateBuckets(
+  releases: ReleaseWithEntries[],
+  standaloneEntries: EntryWithSection[],
+  timezone: string,
+  dateGrouping: DateGrouping,
+): DateBucket[] {
+  const map = new Map<string, DateBucket>();
+  const ensure = (date: string): DateBucket => {
+    const key = dateBucketKey(date, timezone, dateGrouping);
+    let bucket = map.get(key);
+    if (!bucket) {
+      bucket = { key, date, releases: [], standalone: [] };
+      map.set(key, bucket);
+    } else if (parseStoredDate(date).getTime() > parseStoredDate(bucket.date).getTime()) {
+      bucket.date = date;
+    }
+    return bucket;
+  };
+
+  for (const release of releases) ensure(effectiveReleaseDate(release)).releases.push(release);
+  for (const entry of standaloneEntries) ensure(effectiveEntryDate(entry)).standalone.push(entry);
+
+  return [...map.values()].sort((a, b) => (a.key < b.key ? 1 : a.key > b.key ? -1 : 0));
 }
 
 export const CATEGORY_COLORS: Record<Category, { bg: string; text: string }> = {
@@ -48,14 +95,6 @@ function groupEntriesBySection(entries: EntryWithSection[]): Map<string | null, 
     map.get(key)!.push(entry);
   }
   return map;
-}
-
-export function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  });
 }
 
 // Collect all unique categories across releases and standalone entries
@@ -146,16 +185,46 @@ export const EntriesBySectionView: FC<{ entries: EntryWithSection[] }> = ({ entr
   );
 };
 
+// A single release rendered inside a date bucket: version + title + summary,
+// then its entries sub-grouped by category or section.
+const ReleaseBlock: FC<{ release: ReleaseWithEntries; useSection: boolean }> = ({ release, useSection }) => {
+  const summaryHtml = renderMarkdown(release.summary || '');
+  const releaseHref = `/releases/${encodeURIComponent(release.version)}`;
+  return (
+    <div class="timeline-release" id={`release-${release.version}`}>
+      <div class="timeline-header">
+        <a href={releaseHref} class="timeline-version timeline-version-link">{release.version}</a>
+      </div>
+      {release.title && (
+        <h2 class="timeline-release-title">
+          <a href={releaseHref}>{release.title}</a>
+        </h2>
+      )}
+      {summaryHtml && (
+        <div class="prose timeline-summary" dangerouslySetInnerHTML={{ __html: summaryHtml }} />
+      )}
+      {useSection ? (
+        <EntriesBySectionView entries={release.entries} />
+      ) : (
+        <EntriesByCategoryView entries={release.entries} />
+      )}
+    </div>
+  );
+};
+
 export const Changelog: FC<ChangelogProps> = ({
   projectName,
   projectDescription,
   releases,
   standaloneEntries,
   entryGrouping = 'category',
+  timezone = 'UTC',
+  dateGrouping = 'day',
 }) => {
   const hasContent = releases.length > 0 || standaloneEntries.length > 0;
   const allCategories = collectCategories(releases, standaloneEntries);
   const useSection = entryGrouping === 'section';
+  const buckets = buildDateBuckets(releases, standaloneEntries, timezone, dateGrouping);
 
   return (
     <div class="changelog">
@@ -187,75 +256,33 @@ export const Changelog: FC<ChangelogProps> = ({
       {hasContent ? (
         <div class="changelog-timeline">
           <div class="timeline">
-            {releases.map((release) => {
-              const summaryHtml = renderMarkdown(release.summary || '');
-              const releaseDate = release.published_at || release.created_at;
-              const releaseHref = `/releases/${encodeURIComponent(release.version)}`;
-
-              return (
-                <div class={`timeline-item${useSection ? ' timeline-item--sections' : ''}`} id={`release-${release.version}`}>
-                  <div class="timeline-marker"></div>
-                  {useSection ? (
-                    <>
-                      <div class="timeline-sidebar">
-                        <a href={releaseHref} class="timeline-version timeline-version-link">{release.version}</a>
-                        <span class="timeline-date">{formatDate(releaseDate)}</span>
-                      </div>
-                      <div class="timeline-content">
-                        {release.title && (
-                          <h2 class="timeline-release-title">
-                            <a href={releaseHref}>{release.title}</a>
-                          </h2>
-                        )}
-                        {summaryHtml && (
-                          <div class="prose timeline-summary" dangerouslySetInnerHTML={{ __html: summaryHtml }} />
-                        )}
-                        <EntriesBySectionView entries={release.entries} />
-                      </div>
-                    </>
-                  ) : (
-                    <div class="timeline-content">
-                      <div class="timeline-header">
-                        <a href={releaseHref} class="timeline-version timeline-version-link">{release.version}</a>
-                        <span class="timeline-date">{formatDate(releaseDate)}</span>
-                      </div>
-                      {release.title && (
-                        <h2 class="timeline-release-title">
-                          <a href={releaseHref}>{release.title}</a>
-                        </h2>
+            {buckets.map((bucket) => (
+              <div class="timeline-item" data-timeline-bucket>
+                <div class="timeline-marker"></div>
+                <div class="timeline-content">
+                  <time
+                    class="timeline-date timeline-date-heading"
+                    datetime={toIsoUtc(bucket.date)}
+                    data-herald-date
+                    data-format={dateGrouping}
+                  >
+                    {bucketLabel(bucket.date, timezone, dateGrouping)}
+                  </time>
+                  {bucket.releases.map((release) => (
+                    <ReleaseBlock release={release} useSection={useSection} />
+                  ))}
+                  {bucket.standalone.length > 0 && (
+                    <div class="timeline-standalone">
+                      {useSection ? (
+                        <EntriesBySectionView entries={bucket.standalone} />
+                      ) : (
+                        <EntriesByCategoryView entries={bucket.standalone} />
                       )}
-                      {summaryHtml && (
-                        <div class="prose timeline-summary" dangerouslySetInnerHTML={{ __html: summaryHtml }} />
-                      )}
-                      <EntriesByCategoryView entries={release.entries} />
                     </div>
                   )}
                 </div>
-              );
-            })}
-
-            {standaloneEntries.length > 0 && (
-              <div class={`timeline-item${useSection ? ' timeline-item--sections' : ''}`} id="standalone-entries">
-                <div class="timeline-marker"></div>
-                {useSection ? (
-                  <>
-                    <div class="timeline-sidebar">
-                      <span class="timeline-version">Other Updates</span>
-                    </div>
-                    <div class="timeline-content">
-                      <EntriesBySectionView entries={standaloneEntries} />
-                    </div>
-                  </>
-                ) : (
-                  <div class="timeline-content">
-                    <div class="timeline-header">
-                      <span class="timeline-version">Other Updates</span>
-                    </div>
-                    <EntriesByCategoryView entries={standaloneEntries} />
-                  </div>
-                )}
               </div>
-            )}
+            ))}
           </div>
         </div>
       ) : (
