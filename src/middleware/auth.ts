@@ -3,6 +3,7 @@ import { getCookie, deleteCookie } from 'hono/cookie';
 import type { Bindings } from '../bindings';
 import { validateApiKey } from '../services/api-keys';
 import { getAppConfig } from '../services/github-app';
+import { getAllSettings } from '../services/settings';
 
 export async function signValue(
   value: string,
@@ -54,7 +55,11 @@ export const apiKeyAuth = createMiddleware<{ Bindings: Bindings }>(
 
 type AdminAuthEnv = {
   Bindings: Bindings;
-  Variables: { githubUser: string };
+  Variables: {
+    githubUser: string;
+    logoUrl: string | null;
+    faviconUrl: string | null;
+  };
 };
 
 // Admin auth: verifies a signed GitHub session cookie against the
@@ -101,5 +106,13 @@ export const adminAuth = createMiddleware<AdminAuthEnv>(async (c, next) => {
   }
 
   c.set('githubUser', username);
+
+  // Load branding for the admin chrome (sidebar logo + favicon).
+  const settings = await getAllSettings(c.env.DB);
+  const logoKey = settings['logo_image_key'] || '';
+  const faviconKey = settings['favicon_image_key'] || '';
+  c.set('logoUrl', logoKey ? `/images/${logoKey}` : null);
+  c.set('faviconUrl', faviconKey ? `/images/${faviconKey}` : null);
+
   await next();
 });

@@ -69,6 +69,7 @@ export const CustomisePage: FC<CustomisePageProps> = ({
   const logoUrl = logoKey ? `/images/${logoKey}` : null;
   const faviconUrl = faviconKey ? `/images/${faviconKey}` : null;
   const currentTheme = settings['theme'] || 'herald';
+  const primaryColor = settings['primary_color'] || '#4F46E5';
 
   const changelogUrl = baseUrl;
   const embedCode = `<script src="${baseUrl}/embed.js"></script>`;
@@ -258,11 +259,35 @@ export const CustomisePage: FC<CustomisePageProps> = ({
           </div>
         </div>
 
+        {/* Primary colour */}
+        <div class="form-group">
+          <label class="form-label" for="primary_color_text">Primary colour</label>
+          <p class="form-hint">Your brand accent colour. Applied across all templates on your public changelog.</p>
+          <div class="color-picker" data-primary-color>
+            <input
+              type="color"
+              id="primary_color"
+              class="color-picker-swatch"
+              value={primaryColor}
+              data-primary-color-input
+            />
+            <input
+              type="text"
+              id="primary_color_text"
+              class="form-input color-picker-hex"
+              value={primaryColor}
+              maxlength={7}
+              spellcheck={false}
+              data-primary-color-hex
+            />
+          </div>
+        </div>
+
         {/* Live Preview */}
         <div class="form-group">
           <label class="form-label">Preview</label>
           <div class="theme-preview-container" data-theme-preview>
-            <div class="theme-preview-frame" data-theme={currentTheme}>
+            <div class="theme-preview-frame" data-theme={currentTheme} style={`--color-primary: ${primaryColor}`}>
               <div class="theme-preview-header">
                 <a href="#" class="theme-preview-brand">
                   {previewLogoUrl ? (

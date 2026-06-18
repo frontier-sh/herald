@@ -3,11 +3,13 @@ import type { FC } from 'hono/jsx';
 interface SidebarProps {
   currentPath?: string;
   githubUser?: string;
+  logoUrl?: string | null;
 }
 
 export const Sidebar: FC<SidebarProps> = ({
   currentPath = '',
   githubUser,
+  logoUrl,
 }) => {
   const isActive = (href: string): boolean => {
     if (href === '/admin') {
@@ -19,7 +21,14 @@ export const Sidebar: FC<SidebarProps> = ({
   return (
     <aside class="sidebar">
       <div class="sidebar-header">
-        <a href="/admin" class="sidebar-brand">Herald</a>
+        {logoUrl ? (
+          <a href="/admin" class="sidebar-brand sidebar-brand--custom">
+            <img src={logoUrl} alt="Logo" class="sidebar-brand-logo" />
+            <span class="sidebar-brand-byline">Herald</span>
+          </a>
+        ) : (
+          <a href="/admin" class="sidebar-brand">Herald</a>
+        )}
       </div>
       <nav class="sidebar-nav">
         <a href="/admin" class={isActive('/admin') ? 'active' : ''}>

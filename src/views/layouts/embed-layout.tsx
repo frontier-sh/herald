@@ -6,9 +6,10 @@ interface EmbedLayoutProps {
   children: any;
   faviconUrl?: string | null;
   theme?: string;
+  primaryColor?: string;
 }
 
-export const EmbedLayout: FC<EmbedLayoutProps> = ({ children, faviconUrl, theme }) => {
+export const EmbedLayout: FC<EmbedLayoutProps> = ({ children, faviconUrl, theme, primaryColor }) => {
   return (
     <html lang="en">
       <head>
@@ -24,7 +25,11 @@ export const EmbedLayout: FC<EmbedLayoutProps> = ({ children, faviconUrl, theme 
         <ClientHead />
       </head>
       <body class="embed-body">
-        <div class="embed-container" data-theme={theme || 'herald'}>
+        <div
+          class="embed-container"
+          data-theme={theme || 'herald'}
+          style={primaryColor ? `--color-primary: ${primaryColor}` : undefined}
+        >
           {children}
         </div>
         {html`<script>

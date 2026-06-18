@@ -10,6 +10,8 @@ interface AdminLayoutProps {
   currentPath?: string;
   flash?: FlashMessage | null;
   githubUser?: string;
+  logoUrl?: string | null;
+  faviconUrl?: string | null;
 }
 
 export const AdminLayout: FC<AdminLayoutProps> = ({
@@ -18,6 +20,8 @@ export const AdminLayout: FC<AdminLayoutProps> = ({
   currentPath,
   flash,
   githubUser,
+  logoUrl,
+  faviconUrl,
 }) => {
   const pageTitle = title ? `${title} - Herald Admin` : 'Herald Admin';
 
@@ -44,11 +48,12 @@ export const AdminLayout: FC<AdminLayoutProps> = ({
           rel="stylesheet"
           href="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.css"
         />
+        {faviconUrl && <link rel="icon" href={faviconUrl} />}
         <ClientHead />
       </head>
       <body>
         <div class="layout">
-          <Sidebar currentPath={currentPath} githubUser={githubUser} />
+          <Sidebar currentPath={currentPath} githubUser={githubUser} logoUrl={logoUrl} />
           <main class="main-content">
             <div class="content-container">
               {flash && (

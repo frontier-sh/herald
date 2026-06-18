@@ -61,6 +61,19 @@
 }
 
 /* ============================================
+   Brand colour — derive hover/light shades from --color-primary.
+   The themed roots may receive a custom --color-primary inline (set in
+   public-layout / embed-layout / the Customise live preview); these
+   color-mix rules keep the hover/light shades in sync automatically.
+   ============================================ */
+.public-body,
+.embed-container,
+.theme-preview-frame {
+  --color-primary-hover: color-mix(in srgb, var(--color-primary) 82%, black);
+  --color-primary-light: color-mix(in srgb, var(--color-primary) 14%, white);
+}
+
+/* ============================================
    Custom Properties (non-theme)
    ============================================ */
 :root {
@@ -233,6 +246,31 @@ pre code {
   color: #FFFFFF;
   text-decoration: none;
   letter-spacing: -0.03em;
+}
+
+/* When a custom logo is present, show it prominently with a small Herald byline. */
+.sidebar-brand--custom {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.sidebar-brand-logo {
+  display: block;
+  max-height: 32px;
+  max-width: 100%;
+  width: auto;
+  object-fit: contain;
+}
+
+.sidebar-brand-byline {
+  font-family: var(--font-heading);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-sidebar-text);
 }
 
 .sidebar-nav {
@@ -2295,7 +2333,7 @@ tbody tr:hover {
   border-radius: 50%;
   background-color: var(--color-primary);
   border: 3px solid var(--color-bg);
-  box-shadow: 0 0 0 2px var(--color-primary), 0 0 16px rgba(79, 70, 229, 0.2);
+  box-shadow: 0 0 0 2px var(--color-primary), 0 0 16px color-mix(in srgb, var(--color-primary) 20%, transparent);
 }
 
 .changelog-timeline .timeline-header {
@@ -3120,6 +3158,45 @@ tbody tr:hover {
   gap: var(--space-4);
 }
 
+/* Primary colour picker */
+.color-picker {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.color-picker-swatch {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: none;
+  cursor: pointer;
+}
+
+.color-picker-swatch::-webkit-color-swatch-wrapper {
+  padding: 4px;
+}
+
+.color-picker-swatch::-webkit-color-swatch {
+  border: none;
+  border-radius: 2px;
+}
+
+.color-picker-swatch::-moz-color-swatch {
+  border: none;
+  border-radius: 2px;
+}
+
+.color-picker-hex {
+  width: 7.5rem;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+}
+
 .theme-card {
   position: relative;
   border: 2px solid var(--color-border);
@@ -3381,7 +3458,7 @@ tbody tr:hover {
   font-family: var(--font-mono);
   font-size: var(--text-lg);
   font-weight: 700;
-  color: #ffffff;
+  color: var(--color-primary);
   letter-spacing: 0;
 }
 
@@ -3436,7 +3513,7 @@ tbody tr:hover {
 
 [data-theme="opencode"] .entry-group-item-title::before {
   content: '\00b7  ';
-  color: #555;
+  color: var(--color-primary);
 }
 
 [data-theme="opencode"] .entry-group-item-content {
@@ -3502,7 +3579,7 @@ tbody tr:hover {
 }
 
 [data-theme="opencode"] .prose a {
-  color: #a3a3a3;
+  color: var(--color-primary);
 }
 
 [data-theme="opencode"] .prose code {
@@ -3748,7 +3825,7 @@ tbody tr:hover {
 }
 
 [data-theme="notion"] .entry-section-item::before {
-  color: #b4b4b4;
+  color: var(--color-primary);
 }
 
 [data-theme="notion"] .entry-section-item-title {
@@ -3768,7 +3845,7 @@ tbody tr:hover {
 }
 
 [data-theme="notion"] .prose a {
-  color: #37352f;
+  color: var(--color-primary);
   text-decoration: underline;
 }
 

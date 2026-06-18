@@ -55,9 +55,22 @@ import { CustomisePage } from '../views/pages/customise-page';
 import { GeneratePage } from '../views/pages/generate-page';
 import onboarding from './onboarding';
 
+// Logo, favicon and brand-colour are global branding: they render on every
+// public surface, including release detail pages. The blanket post-mutation
+// middleware below only purges the shared pages (CACHED_PATHS), so handlers
+// that change global branding must also purge every published release page.
+async function purgeReleaseDetailPages(db: Bindings['DB'], baseUrl: string): Promise<void> {
+  const releases = await listReleases(db, { status: 'published' });
+  await purgeReleasePages(baseUrl, releases.map((r) => r.version));
+}
+
 const admin = new Hono<{
   Bindings: Bindings;
-  Variables: { githubUser: string };
+  Variables: {
+    githubUser: string;
+    logoUrl: string | null;
+    faviconUrl: string | null;
+  };
 }>();
 
 // Apply admin auth middleware to all admin routes
@@ -116,7 +129,7 @@ admin.get('/', async (c) => {
       title="Dashboard"
       currentPath="/admin"
       flash={flash}
-      githubUser={c.get('githubUser')}
+      githubUser={c.get('githubUser')} logoUrl={c.get('logoUrl')} faviconUrl={c.get('faviconUrl')}
     >
       <Dashboard
         totalEntries={allEntries.length}
@@ -142,7 +155,7 @@ admin.get('/entries', async (c) => {
   const entries = await listEntries(c.env.DB, filters);
 
   return c.html(
-    <AdminLayout title="Entries" currentPath="/admin/entries" flash={flash} githubUser={c.get('githubUser')}>
+    <AdminLayout title="Entries" currentPath="/admin/entries" flash={flash} githubUser={c.get('githubUser')} logoUrl={c.get('logoUrl')} faviconUrl={c.get('faviconUrl')}>
       <EntriesList
         entries={entries}
         statusFilter={statusFilter}
@@ -159,7 +172,7 @@ admin.get('/entries/new', async (c) => {
   const sections = await listSections(c.env.DB);
   const aiEnabled = (await getSetting(c.env.DB, 'ai_enabled')) === 'true';
   return c.html(
-    <AdminLayout title="New Entry" currentPath="/admin/entries" flash={flash} githubUser={c.get('githubUser')}>
+    <AdminLayout title="New Entry" currentPath="/admin/entries" flash={flash} githubUser={c.get('githubUser')} logoUrl={c.get('logoUrl')} faviconUrl={c.get('faviconUrl')}>
       <EntryEdit sections={sections} aiEnabled={aiEnabled} />
     </AdminLayout>,
   );
@@ -241,7 +254,7 @@ admin.get('/entries/:id', async (c) => {
   const aiEnabled = (await getSetting(c.env.DB, 'ai_enabled')) === 'true';
 
   return c.html(
-    <AdminLayout title={`Edit: ${entry.title}`} currentPath="/admin/entries" flash={flash} githubUser={c.get('githubUser')}>
+    <AdminLayout title={`Edit: ${entry.title}`} currentPath="/admin/entries" flash={flash} githubUser={c.get('githubUser')} logoUrl={c.get('logoUrl')} faviconUrl={c.get('faviconUrl')}>
       <EntryEdit entry={entry} sections={sections} aiEnabled={aiEnabled} />
     </AdminLayout>,
   );
@@ -484,7 +497,7 @@ admin.get('/generate', async (c) => {
       title="Generate from commits"
       currentPath="/admin/generate"
       flash={flash}
-      githubUser={c.get('githubUser')}
+      githubUser={c.get('githubUser')} logoUrl={c.get('logoUrl')} faviconUrl={c.get('faviconUrl')}
     >
       <GeneratePage
         sourceRepo={sourceRepo}
@@ -584,7 +597,7 @@ admin.get('/releases', async (c) => {
   const releases = await listReleases(c.env.DB, filters);
 
   return c.html(
-    <AdminLayout title="Releases" currentPath="/admin/releases" flash={flash} githubUser={c.get('githubUser')}>
+    <AdminLayout title="Releases" currentPath="/admin/releases" flash={flash} githubUser={c.get('githubUser')} logoUrl={c.get('logoUrl')} faviconUrl={c.get('faviconUrl')}>
       <ReleasesList releases={releases} statusFilter={statusFilter} />
     </AdminLayout>,
   );
@@ -598,7 +611,7 @@ admin.get('/releases/new', async (c) => {
   const availableEntries = await listEntries(c.env.DB);
 
   return c.html(
-    <AdminLayout title="New Release" currentPath="/admin/releases" flash={flash} githubUser={c.get('githubUser')}>
+    <AdminLayout title="New Release" currentPath="/admin/releases" flash={flash} githubUser={c.get('githubUser')} logoUrl={c.get('logoUrl')} faviconUrl={c.get('faviconUrl')}>
       <ReleaseEdit availableEntries={availableEntries} />
     </AdminLayout>,
   );
@@ -682,7 +695,7 @@ admin.get('/releases/:id', async (c) => {
   const availableEntries = await listEntries(c.env.DB);
 
   return c.html(
-    <AdminLayout title={`Edit: ${release.version}`} currentPath="/admin/releases" flash={flash} githubUser={c.get('githubUser')}>
+    <AdminLayout title={`Edit: ${release.version}`} currentPath="/admin/releases" flash={flash} githubUser={c.get('githubUser')} logoUrl={c.get('logoUrl')} faviconUrl={c.get('faviconUrl')}>
       <ReleaseEdit release={release} availableEntries={availableEntries} />
     </AdminLayout>,
   );
@@ -856,7 +869,7 @@ admin.get('/customise', async (c) => {
   const exampleStandalone = hasContent ? changelogData.standaloneEntries : [];
 
   return c.html(
-    <AdminLayout title="Customise" currentPath="/admin/customise" flash={flash} githubUser={c.get('githubUser')}>
+    <AdminLayout title="Customise" currentPath="/admin/customise" flash={flash} githubUser={c.get('githubUser')} logoUrl={c.get('logoUrl')} faviconUrl={c.get('faviconUrl')}>
       <CustomisePage
         settings={settings}
         baseUrl={baseUrl}
@@ -884,7 +897,7 @@ admin.get('/settings', async (c) => {
       title="Settings"
       currentPath="/admin/settings"
       flash={flash}
-      githubUser={c.get('githubUser')}
+      githubUser={c.get('githubUser')} logoUrl={c.get('logoUrl')} faviconUrl={c.get('faviconUrl')}
     >
       <SettingsPage
         settings={settings}
@@ -976,12 +989,41 @@ admin.post('/settings/theme', async (c) => {
 
   try {
     await setSetting(c.env.DB, 'theme', selectedTheme);
+
+    // Release detail pages also render the theme and are cached separately
+    // from the shared pages purged by the post-mutation middleware.
+    const url = new URL(c.req.url);
+    const baseUrl = c.env.BASE_URL || `${url.protocol}//${url.host}`;
+    c.executionCtx.waitUntil(purgeReleaseDetailPages(c.env.DB, baseUrl));
+
     setFlash(c, 'success', 'Theme saved successfully.');
   } catch (err) {
     setFlash(c, 'error', 'Failed to save theme.');
   }
 
   return c.redirect('/admin/customise');
+});
+
+// ─── Settings: Primary colour ───────────────────────────
+
+admin.post('/settings/primary-color', async (c) => {
+  const body = await c.req.parseBody();
+  const raw = (body['primary_color'] as string) || '';
+  const color = /^#[0-9a-fA-F]{6}$/.test(raw) ? raw.toUpperCase() : '#4F46E5';
+
+  try {
+    await setSetting(c.env.DB, 'primary_color', color);
+
+    // Release detail pages also render the brand colour and are cached
+    // separately from the shared pages purged by the post-mutation middleware.
+    const url = new URL(c.req.url);
+    const baseUrl = c.env.BASE_URL || `${url.protocol}//${url.host}`;
+    c.executionCtx.waitUntil(purgeReleaseDetailPages(c.env.DB, baseUrl));
+
+    return c.json({ ok: true, primary_color: color });
+  } catch (err) {
+    return c.json({ ok: false, error: 'Failed to save primary colour.' }, 500);
+  }
 });
 
 // ─── Settings: Publishing ───────────────────────────────
@@ -1103,9 +1145,11 @@ admin.post('/images/upload/logo', async (c) => {
 
     await setSetting(c.env.DB, 'logo_image_key', result.key);
 
+    const url = new URL(c.req.url);
+    const baseUrl = c.env.BASE_URL || `${url.protocol}//${url.host}`;
+    c.executionCtx.waitUntil(purgeReleaseDetailPages(c.env.DB, baseUrl));
+
     if (existingKey && existingKey !== result.key) {
-      const url = new URL(c.req.url);
-      const baseUrl = c.env.BASE_URL || `${url.protocol}//${url.host}`;
       c.executionCtx.waitUntil(purgeImageCache(baseUrl, existingKey));
     }
 
@@ -1133,9 +1177,11 @@ admin.post('/images/upload/favicon', async (c) => {
 
     await setSetting(c.env.DB, 'favicon_image_key', result.key);
 
+    const url = new URL(c.req.url);
+    const baseUrl = c.env.BASE_URL || `${url.protocol}//${url.host}`;
+    c.executionCtx.waitUntil(purgeReleaseDetailPages(c.env.DB, baseUrl));
+
     if (existingKey && existingKey !== result.key) {
-      const url = new URL(c.req.url);
-      const baseUrl = c.env.BASE_URL || `${url.protocol}//${url.host}`;
       c.executionCtx.waitUntil(purgeImageCache(baseUrl, existingKey));
     }
 
@@ -1167,9 +1213,11 @@ admin.post('/settings/logo', async (c) => {
 
     await setSetting(c.env.DB, 'logo_image_key', result.key);
 
+    const url = new URL(c.req.url);
+    const baseUrl = c.env.BASE_URL || `${url.protocol}//${url.host}`;
+    c.executionCtx.waitUntil(purgeReleaseDetailPages(c.env.DB, baseUrl));
+
     if (existingKey && existingKey !== result.key) {
-      const url = new URL(c.req.url);
-      const baseUrl = c.env.BASE_URL || `${url.protocol}//${url.host}`;
       c.executionCtx.waitUntil(purgeImageCache(baseUrl, existingKey));
     }
 
@@ -1191,6 +1239,7 @@ admin.post('/settings/logo/remove', async (c) => {
       const url = new URL(c.req.url);
       const baseUrl = c.env.BASE_URL || `${url.protocol}//${url.host}`;
       c.executionCtx.waitUntil(purgeImageCache(baseUrl, existingKey));
+      c.executionCtx.waitUntil(purgeReleaseDetailPages(c.env.DB, baseUrl));
     }
     setFlash(c, 'success', 'Logo removed.');
   } catch (err) {
@@ -1221,9 +1270,11 @@ admin.post('/settings/favicon', async (c) => {
 
     await setSetting(c.env.DB, 'favicon_image_key', result.key);
 
+    const url = new URL(c.req.url);
+    const baseUrl = c.env.BASE_URL || `${url.protocol}//${url.host}`;
+    c.executionCtx.waitUntil(purgeReleaseDetailPages(c.env.DB, baseUrl));
+
     if (existingKey && existingKey !== result.key) {
-      const url = new URL(c.req.url);
-      const baseUrl = c.env.BASE_URL || `${url.protocol}//${url.host}`;
       c.executionCtx.waitUntil(purgeImageCache(baseUrl, existingKey));
     }
 
@@ -1245,6 +1296,7 @@ admin.post('/settings/favicon/remove', async (c) => {
       const url = new URL(c.req.url);
       const baseUrl = c.env.BASE_URL || `${url.protocol}//${url.host}`;
       c.executionCtx.waitUntil(purgeImageCache(baseUrl, existingKey));
+      c.executionCtx.waitUntil(purgeReleaseDetailPages(c.env.DB, baseUrl));
     }
     setFlash(c, 'success', 'Favicon removed.');
   } catch (err) {
