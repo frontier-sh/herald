@@ -65,13 +65,29 @@ Rules:
 }
 
 /**
- * Token budget for a summarization. Deliberately large: the default model
- * (Kimi K2.6) is a reasoning model whose hidden reasoning can run to thousands
- * of tokens before it emits any answer — too small a cap is spent entirely on
- * reasoning, leaving an empty (or truncated) reply. 8K leaves ample room for
- * reasoning plus the short entry on even large multi-paragraph commits.
+ * Token budget for a summarization. Reasoning is disabled (see
+ * DISABLE_THINKING) so the model answers directly in ~100-200 tokens; the
+ * generous cap is just headroom for a long multi-paragraph body and costs
+ * nothing extra when unused.
  */
 export const SUMMARIZATION_MAX_TOKENS = 8192;
+
+/**
+ * Disable the model's extended "thinking" / reasoning phase.
+ *
+ * Reasoning models (the default Kimi K2.6, plus Qwen3 and GLM in the registry)
+ * emit hidden reasoning BEFORE the answer, and that reasoning is billed against
+ * the same `max_tokens` budget. On a large commit the reasoning can consume the
+ * entire budget, so the model is cut off (`finish_reason: "length"`) before it
+ * writes a single character of the answer — yielding an empty reply that the
+ * caller then silently replaced with the raw commit (the "AI does nothing" bug).
+ *
+ * Reformatting a commit into a one-line changelog needs no chain-of-thought, so
+ * we turn it off: `thinking` is Kimi's switch and `enable_thinking` is the
+ * Qwen/GLM equivalent. Models that don't recognise these keys ignore them, so
+ * it is safe to send to every model in the registry.
+ */
+export const DISABLE_THINKING = { thinking: false, enable_thinking: false } as const;
 
 /** JSON-mode schema constraining the model to a {title, body} object. */
 export const SUMMARIZATION_RESPONSE_FORMAT = {
@@ -104,6 +120,9 @@ export function buildSummarizationRequest(opts: {
     ],
     max_tokens: SUMMARIZATION_MAX_TOKENS,
     response_format: SUMMARIZATION_RESPONSE_FORMAT,
+    // Reasoning is billed against max_tokens and can starve the answer to empty
+    // on large commits — turn it off (see DISABLE_THINKING).
+    chat_template_kwargs: DISABLE_THINKING,
   };
 }
 

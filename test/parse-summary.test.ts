@@ -12,6 +12,7 @@ import assert from 'node:assert/strict';
 import {
   parseSummary,
   buildSummarizationPrompt,
+  buildSummarizationRequest,
 } from '../src/services/changelog-format.ts';
 
 test('parses a clean JSON object', () => {
@@ -72,6 +73,22 @@ test('plain prose (no JSON) becomes the body with an empty title', () => {
 test('empty / whitespace input yields an empty entry', () => {
   assert.deepEqual(parseSummary(''), { title: '', content: '' });
   assert.deepEqual(parseSummary('   \n  '), { title: '', content: '' });
+});
+
+test('REGRESSION: request disables model reasoning so the answer is never starved to empty', () => {
+  // Reproduces the reported "AI does nothing" bug: the default model (Kimi K2.6)
+  // is a reasoning model whose hidden reasoning is billed against max_tokens. On
+  // a large commit it spent the whole budget reasoning and returned an empty
+  // body, which the queue then silently replaced with the raw commit. Disabling
+  // thinking is what keeps the model answering directly.
+  const request = buildSummarizationRequest({
+    content: 'feat: add CSV export to reports',
+    category: 'added',
+    personality: 'neutral',
+  }) as { chat_template_kwargs?: Record<string, unknown> };
+
+  assert.equal(request.chat_template_kwargs?.thinking, false); // Kimi switch
+  assert.equal(request.chat_template_kwargs?.enable_thinking, false); // Qwen/GLM switch
 });
 
 test('prompt instructs public-facing output and the JSON shape', () => {

@@ -57,9 +57,23 @@ export async function handleQueue(
         (personalitySetting?.value as string) || 'neutral',
       );
 
-      // Keep the existing title/content when the AI returns nothing usable.
+      // If the AI produced no usable body, do NOT silently write the raw commit
+      // back and mark it "completed" — that looks like a successful no-op to the
+      // user (the reported "AI does nothing" bug). Mark it failed instead: the
+      // UI shows an "AI Failed" badge plus a Regenerate button, and the existing
+      // content is left untouched so the entry isn't blank.
+      if (!summary.content.trim()) {
+        await env.DB.prepare(
+          'UPDATE entries SET ai_status = ? WHERE id = ?',
+        ).bind('failed', entryId).run();
+        message.ack();
+        continue;
+      }
+
+      // The body is rewritten; keep the existing title only if the AI didn't
+      // give us a better one.
       const title = summary.title || (entry.title as string);
-      const content = summary.content || rawContent;
+      const content = summary.content;
 
       // Update entry with AI-generated title and content
       await env.DB.prepare(

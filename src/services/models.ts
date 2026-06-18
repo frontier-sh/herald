@@ -41,10 +41,6 @@ export const AI_MODELS: readonly AIModel[] = [
     label: 'Llama 3.1 8B Instruct Fast',
   },
   {
-    id: '@cf/google/gemma-3-12b-it',
-    label: 'Gemma 3 12B IT',
-  },
-  {
     id: '@cf/qwen/qwen3-30b-a3b-fp8',
     label: 'Qwen3 30B A3B FP8',
   },
