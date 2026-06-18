@@ -128,6 +128,7 @@ function analyze(commit, summary) {
   const body = (summary.content || '').trim();
   const flags = [];
 
+  if (!body) flags.push('empty-body'); // the "AI does nothing" failure mode
   if (!title) flags.push('empty-title');
   else if (title.toLowerCase() === commit.subject.toLowerCase()) flags.push('title-not-renamed');
 

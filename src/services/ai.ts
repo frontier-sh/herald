@@ -54,11 +54,19 @@ export async function summarizeContent(
   personality?: string,
 ): Promise<SummarizedEntry> {
   const request = buildSummarizationRequest({ content, category, personality });
+  const modelId = resolveModelId(model);
 
-  // JSON mode constrains the model to valid {title, body}; the generous token
-  // budget keeps large commits from truncating mid-reply. coerceSummary() is the
-  // defensive parser for models that don't fully honour either.
-  const response = await ai.run(resolveModelId(model) as any, request as any);
+  // JSON mode constrains the model to valid {title, body}; reasoning is disabled
+  // so the answer can't be starved to empty by the token budget. coerceSummary()
+  // is the defensive parser for models that don't fully honour either.
+  let summary = coerceSummary(await ai.run(modelId as any, request as any));
 
-  return coerceSummary(response);
+  // A genuinely empty reply should be rare now, but it can still happen (a model
+  // refusing, or an occasional blank). Retry once before giving up so a one-off
+  // empty response doesn't surface as a failed generation.
+  if (!summary.content.trim()) {
+    summary = coerceSummary(await ai.run(modelId as any, request as any));
+  }
+
+  return summary;
 }
