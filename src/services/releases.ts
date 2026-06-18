@@ -8,6 +8,8 @@ export interface CreateReleaseData {
   version: string;
   title?: string;
   summary?: string;
+  /** Editable release date (canonical UTC string). */
+  release_date?: string;
 }
 
 export interface UpdateReleaseData {
@@ -15,6 +17,8 @@ export interface UpdateReleaseData {
   title?: string;
   summary?: string;
   status?: ReleaseStatus;
+  /** Editable release date (canonical UTC string). */
+  release_date?: string;
 }
 
 export interface ReleaseWithEntries extends Release {
@@ -132,11 +136,11 @@ export async function createRelease(
 ): Promise<Release> {
   const result = await db
     .prepare(
-      `INSERT INTO releases (version, title, summary)
-       VALUES (?, ?, ?)
+      `INSERT INTO releases (version, title, summary, release_date)
+       VALUES (?, ?, ?, datetime(?))
        RETURNING *`,
     )
-    .bind(data.version, data.title ?? '', data.summary ?? '')
+    .bind(data.version, data.title ?? '', data.summary ?? '', data.release_date ?? null)
     .first<Release>();
   return result!;
 }
@@ -150,7 +154,7 @@ export async function updateRelease(
   const fields: string[] = [];
   const params: unknown[] = [];
 
-  const allowedFields = ['version', 'title', 'summary', 'status'] as const;
+  const allowedFields = ['version', 'title', 'summary', 'status', 'release_date'] as const;
 
   for (const field of allowedFields) {
     if (field in data) {
@@ -211,7 +215,8 @@ export async function publishRelease(
   // Publish the release itself
   await db
     .prepare(
-      `UPDATE releases SET status = 'published', published_at = datetime('now'), updated_at = datetime('now')
+      `UPDATE releases SET status = 'published', published_at = datetime('now'),
+         release_date = COALESCE(release_date, datetime('now')), updated_at = datetime('now')
        WHERE id = ?`,
     )
     .bind(id)
@@ -220,7 +225,8 @@ export async function publishRelease(
   // Also publish all associated entries
   await db
     .prepare(
-      `UPDATE entries SET status = 'published', published_at = datetime('now'), updated_at = datetime('now')
+      `UPDATE entries SET status = 'published', published_at = datetime('now'),
+         entry_date = COALESCE(entry_date, datetime('now')), updated_at = datetime('now')
        WHERE id IN (SELECT entry_id FROM release_entries WHERE release_id = ?)`,
     )
     .bind(id)

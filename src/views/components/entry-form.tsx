@@ -1,6 +1,7 @@
 import type { FC } from 'hono/jsx';
 import type { EntryWithSection, Section } from '../../db/schema';
 import { CATEGORIES } from '../../db/schema';
+import { effectiveEntryDate, toDatetimeLocalValue } from '../../services/datetime';
 
 interface EntryFormProps {
   entry?: EntryWithSection;
@@ -8,10 +9,19 @@ interface EntryFormProps {
   action: string;
   /** When AI features are enabled, offer an "Auto (AI decides)" category. */
   aiEnabled?: boolean;
+  /** Configured default timezone; the date field is shown/edited in this zone. */
+  timezone?: string;
 }
 
-export const EntryForm: FC<EntryFormProps> = ({ entry, sections = [], action, aiEnabled = false }) => {
+export const EntryForm: FC<EntryFormProps> = ({
+  entry,
+  sections = [],
+  action,
+  aiEnabled = false,
+  timezone = 'UTC',
+}) => {
   const isEditing = !!entry;
+  const dateValue = entry ? toDatetimeLocalValue(effectiveEntryDate(entry), timezone) : '';
 
   return (
     <form method="post" action={action} class="entry-form" id="entry-form">
@@ -82,6 +92,22 @@ export const EntryForm: FC<EntryFormProps> = ({ entry, sections = [], action, ai
             <p class="form-hint">Leave on Auto to let AI pick the category.</p>
           )}
         </div>
+      </div>
+
+      <div class="form-group">
+        <label for="entry_date" class="form-label">
+          Date
+        </label>
+        <input
+          type="datetime-local"
+          id="entry_date"
+          name="entry_date"
+          class="form-input"
+          value={dateValue}
+        />
+        <p class="form-hint">
+          When this change happened. Shown and grouped on your public changelog. Times are in {timezone}.
+        </p>
       </div>
 
       <div class="form-group">

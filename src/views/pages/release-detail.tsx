@@ -3,9 +3,9 @@ import type { Release, EntryWithSection } from '../../db/schema';
 import {
   EntriesByCategoryView,
   EntriesBySectionView,
-  formatDate,
   renderMarkdown,
 } from './changelog';
+import { effectiveReleaseDate, formatInZone, toIsoUtc } from '../../services/datetime';
 
 interface ReleaseWithEntries extends Release {
   entries: EntryWithSection[];
@@ -15,15 +15,17 @@ interface ReleaseDetailProps {
   projectName: string;
   release: ReleaseWithEntries;
   entryGrouping?: 'category' | 'section';
+  timezone?: string;
 }
 
 export const ReleaseDetail: FC<ReleaseDetailProps> = ({
   projectName,
   release,
   entryGrouping = 'category',
+  timezone = 'UTC',
 }) => {
   const summaryHtml = renderMarkdown(release.summary || '');
-  const releaseDate = release.published_at || release.created_at;
+  const releaseDate = effectiveReleaseDate(release);
   const useSection = entryGrouping === 'section';
 
   return (
@@ -37,7 +39,9 @@ export const ReleaseDetail: FC<ReleaseDetailProps> = ({
       <article class="release-detail">
         <header class="release-detail-header">
           <span class="timeline-version">{release.version}</span>
-          <span class="timeline-date">{formatDate(releaseDate)}</span>
+          <time class="timeline-date" datetime={toIsoUtc(releaseDate)} data-herald-date data-format="day">
+            {formatInZone(releaseDate, timezone)}
+          </time>
           {release.title && (
             <h1 class="release-detail-title">{release.title}</h1>
           )}

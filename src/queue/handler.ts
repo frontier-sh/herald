@@ -79,8 +79,8 @@ export async function handleQueue(
 
       // Update entry with AI-generated title, category, and content
       await env.DB.prepare(
-        'UPDATE entries SET title = ?, content = ?, category = ?, ai_status = ?, updated_at = datetime(?) WHERE id = ?',
-      ).bind(title, content, category, 'completed', new Date().toISOString(), entryId).run();
+        "UPDATE entries SET title = ?, content = ?, category = ?, ai_status = ?, updated_at = datetime('now') WHERE id = ?",
+      ).bind(title, content, category, 'completed', entryId).run();
 
       // Purge cached public pages so the new content is visible. The queue has
       // no request to read a host from, so fall back to the origin cached from

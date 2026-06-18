@@ -7,12 +7,14 @@ interface EntriesListProps {
   entries: EntryWithSection[];
   statusFilter?: string;
   categoryFilter?: string;
+  timezone?: string;
 }
 
 export const EntriesList: FC<EntriesListProps> = ({
   entries,
   statusFilter = '',
   categoryFilter = '',
+  timezone = 'UTC',
 }) => {
   return (
     <div>
@@ -50,7 +52,7 @@ export const EntriesList: FC<EntriesListProps> = ({
       {entries.length > 0 ? (
         <div class="entries-list">
           {entries.map((entry) => (
-            <EntryCard entry={entry} />
+            <EntryCard entry={entry} timezone={timezone} />
           ))}
         </div>
       ) : (

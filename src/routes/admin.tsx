@@ -27,6 +27,7 @@ import { resolveModelId } from '../services/models';
 import { purgePublicCache, purgeImageCache, purgeReleasePages } from '../services/cache';
 import { uploadContentImage, uploadBrandImage, deleteImage } from '../services/images';
 import { listSections, getOrCreateSection } from '../services/sections';
+import { zonedDatetimeLocalToUTC, normalizeTimezone } from '../services/datetime';
 import {
   getAppConfig,
   getSourceToken,
@@ -123,6 +124,7 @@ admin.get('/', async (c) => {
   const publishedEntries = await listEntries(c.env.DB, { status: 'published' as EntryStatus });
   const draftEntries = await listEntries(c.env.DB, { status: 'draft' as EntryStatus });
   const recentEntries = allEntries.slice(0, 10);
+  const timezone = normalizeTimezone(await getSetting(c.env.DB, 'timezone'));
 
   return c.html(
     <AdminLayout
@@ -136,6 +138,7 @@ admin.get('/', async (c) => {
         publishedCount={publishedEntries.length}
         draftCount={draftEntries.length}
         recentEntries={recentEntries}
+        timezone={timezone}
       />
     </AdminLayout>,
   );
@@ -153,6 +156,7 @@ admin.get('/entries', async (c) => {
   if (categoryFilter) filters.category = categoryFilter as Category;
 
   const entries = await listEntries(c.env.DB, filters);
+  const timezone = normalizeTimezone(await getSetting(c.env.DB, 'timezone'));
 
   return c.html(
     <AdminLayout title="Entries" currentPath="/admin/entries" flash={flash} githubUser={c.get('githubUser')} logoUrl={c.get('logoUrl')} faviconUrl={c.get('faviconUrl')}>
@@ -160,6 +164,7 @@ admin.get('/entries', async (c) => {
         entries={entries}
         statusFilter={statusFilter}
         categoryFilter={categoryFilter}
+        timezone={timezone}
       />
     </AdminLayout>,
   );
@@ -171,9 +176,10 @@ admin.get('/entries/new', async (c) => {
   const flash = getFlash(c);
   const sections = await listSections(c.env.DB);
   const aiEnabled = (await getSetting(c.env.DB, 'ai_enabled')) === 'true';
+  const timezone = normalizeTimezone(await getSetting(c.env.DB, 'timezone'));
   return c.html(
     <AdminLayout title="New Entry" currentPath="/admin/entries" flash={flash} githubUser={c.get('githubUser')} logoUrl={c.get('logoUrl')} faviconUrl={c.get('faviconUrl')}>
-      <EntryEdit sections={sections} aiEnabled={aiEnabled} />
+      <EntryEdit sections={sections} aiEnabled={aiEnabled} timezone={timezone} />
     </AdminLayout>,
   );
 });
@@ -191,6 +197,7 @@ admin.post('/entries', async (c) => {
     | Category
     | undefined;
   const status = body['status'] as string;
+  const entryDateRaw = (body['entry_date'] as string) || '';
 
   if (!title) {
     setFlash(c, 'error', 'Title is required.');
@@ -204,11 +211,16 @@ admin.post('/entries', async (c) => {
       sectionId = section.id;
     }
 
+    // The date field is entered in the configured timezone; store as UTC.
+    const timezone = normalizeTimezone(await getSetting(c.env.DB, 'timezone'));
+    const entryDate = entryDateRaw ? zonedDatetimeLocalToUTC(entryDateRaw, timezone) ?? undefined : undefined;
+
     const entry = await createEntry(c.env.DB, {
       title,
       content,
       category,
       section_id: sectionId,
+      entry_date: entryDate,
     });
 
     // If publish was requested, publish immediately
@@ -252,10 +264,11 @@ admin.get('/entries/:id', async (c) => {
 
   const sections = await listSections(c.env.DB);
   const aiEnabled = (await getSetting(c.env.DB, 'ai_enabled')) === 'true';
+  const timezone = normalizeTimezone(await getSetting(c.env.DB, 'timezone'));
 
   return c.html(
     <AdminLayout title={`Edit: ${entry.title}`} currentPath="/admin/entries" flash={flash} githubUser={c.get('githubUser')} logoUrl={c.get('logoUrl')} faviconUrl={c.get('faviconUrl')}>
-      <EntryEdit entry={entry} sections={sections} aiEnabled={aiEnabled} />
+      <EntryEdit entry={entry} sections={sections} aiEnabled={aiEnabled} timezone={timezone} />
     </AdminLayout>,
   );
 });
@@ -277,6 +290,7 @@ admin.post('/entries/:id', async (c) => {
   // than overwriting it with a blanket default.
   const category = ((body['category'] as string) || '').trim();
   const status = body['status'] as string;
+  const entryDateRaw = (body['entry_date'] as string) || '';
 
   if (!title) {
     setFlash(c, 'error', 'Title is required.');
@@ -297,6 +311,12 @@ admin.post('/entries/:id', async (c) => {
     };
     if (category) {
       updateData.category = category as Category;
+    }
+    if (entryDateRaw) {
+      // Entered in the configured timezone; store as UTC.
+      const timezone = normalizeTimezone(await getSetting(c.env.DB, 'timezone'));
+      const entryDate = zonedDatetimeLocalToUTC(entryDateRaw, timezone);
+      if (entryDate) updateData.entry_date = entryDate;
     }
 
     if (status === 'published') {
@@ -553,7 +573,9 @@ admin.post('/generate', async (c) => {
         source_metadata: JSON.stringify({ sha, url, repo: sourceRepo }),
         // Preserve the commit's own date so entries keep their real order and
         // show when the work actually happened (not when they were imported).
+        // Also set entry_date so it survives the publish-time COALESCE default.
         created_at: date || undefined,
+        entry_date: date || undefined,
       });
 
       // Mirror the manual-create flow: queue for AI cleanup when enabled.
@@ -595,10 +617,11 @@ admin.get('/releases', async (c) => {
   if (statusFilter) filters.status = statusFilter as ReleaseStatus;
 
   const releases = await listReleases(c.env.DB, filters);
+  const timezone = normalizeTimezone(await getSetting(c.env.DB, 'timezone'));
 
   return c.html(
     <AdminLayout title="Releases" currentPath="/admin/releases" flash={flash} githubUser={c.get('githubUser')} logoUrl={c.get('logoUrl')} faviconUrl={c.get('faviconUrl')}>
-      <ReleasesList releases={releases} statusFilter={statusFilter} />
+      <ReleasesList releases={releases} statusFilter={statusFilter} timezone={timezone} />
     </AdminLayout>,
   );
 });
@@ -609,10 +632,11 @@ admin.get('/releases/new', async (c) => {
   const flash = getFlash(c);
   // Fetch all entries (draft and published) that could be included
   const availableEntries = await listEntries(c.env.DB);
+  const timezone = normalizeTimezone(await getSetting(c.env.DB, 'timezone'));
 
   return c.html(
     <AdminLayout title="New Release" currentPath="/admin/releases" flash={flash} githubUser={c.get('githubUser')} logoUrl={c.get('logoUrl')} faviconUrl={c.get('faviconUrl')}>
-      <ReleaseEdit availableEntries={availableEntries} />
+      <ReleaseEdit availableEntries={availableEntries} timezone={timezone} />
     </AdminLayout>,
   );
 });
@@ -625,6 +649,7 @@ admin.post('/releases', async (c) => {
   const title = (body['title'] as string) || '';
   const summary = (body['summary'] as string) || (body['summary_raw'] as string) || '';
   const status = body['status'] as string;
+  const releaseDateRaw = (body['release_date'] as string) || '';
 
   if (!version) {
     setFlash(c, 'error', 'Version is required.');
@@ -632,10 +657,16 @@ admin.post('/releases', async (c) => {
   }
 
   try {
+    const timezone = normalizeTimezone(await getSetting(c.env.DB, 'timezone'));
+    const releaseDate = releaseDateRaw
+      ? zonedDatetimeLocalToUTC(releaseDateRaw, timezone) ?? undefined
+      : undefined;
+
     const release = await createRelease(c.env.DB, {
       version,
       title,
       summary,
+      release_date: releaseDate,
     });
 
     // Collect entry IDs from checkboxes and order field
@@ -693,10 +724,11 @@ admin.get('/releases/:id', async (c) => {
 
   // Fetch all entries that could be included
   const availableEntries = await listEntries(c.env.DB);
+  const timezone = normalizeTimezone(await getSetting(c.env.DB, 'timezone'));
 
   return c.html(
     <AdminLayout title={`Edit: ${release.version}`} currentPath="/admin/releases" flash={flash} githubUser={c.get('githubUser')} logoUrl={c.get('logoUrl')} faviconUrl={c.get('faviconUrl')}>
-      <ReleaseEdit release={release} availableEntries={availableEntries} />
+      <ReleaseEdit release={release} availableEntries={availableEntries} timezone={timezone} />
     </AdminLayout>,
   );
 });
@@ -715,6 +747,7 @@ admin.post('/releases/:id', async (c) => {
   const title = (body['title'] as string) || '';
   const summary = (body['summary'] as string) || (body['summary_raw'] as string) || '';
   const status = body['status'] as string;
+  const releaseDateRaw = (body['release_date'] as string) || '';
 
   if (!version) {
     setFlash(c, 'error', 'Version is required.');
@@ -736,7 +769,13 @@ admin.post('/releases/:id', async (c) => {
       entryIds = ids.map(Number).filter((n) => !isNaN(n) && n > 0);
     }
 
-    const updateData: { version: string; title: string; summary: string; status?: ReleaseStatus } = {
+    const updateData: {
+      version: string;
+      title: string;
+      summary: string;
+      status?: ReleaseStatus;
+      release_date?: string;
+    } = {
       version,
       title,
       summary,
@@ -744,6 +783,12 @@ admin.post('/releases/:id', async (c) => {
 
     if (status === 'draft') {
       updateData.status = 'draft';
+    }
+
+    if (releaseDateRaw) {
+      const timezone = normalizeTimezone(await getSetting(c.env.DB, 'timezone'));
+      const releaseDate = zonedDatetimeLocalToUTC(releaseDateRaw, timezone);
+      if (releaseDate) updateData.release_date = releaseDate;
     }
 
     const release = await updateRelease(c.env.DB, id, updateData, entryIds);
@@ -858,12 +903,13 @@ admin.get('/customise', async (c) => {
     summary: 'The first release of our product with core functionality.',
     status: 'published' as const,
     published_at: new Date().toISOString(),
+    release_date: new Date().toISOString(),
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
     entries: [
-      { id: 1, title: 'Dark mode support', content: 'Added full dark mode with system preference detection.', category: 'added' as const, section_id: null, section_name: null, status: 'published' as const, published_at: new Date().toISOString(), created_at: new Date().toISOString(), updated_at: new Date().toISOString(), source: 'manual' as const, source_metadata: null, ai_status: null, raw_content: null },
-      { id: 2, title: 'Login page not loading on mobile devices', content: 'Resolved an issue where the login form failed to render on iOS Safari.', category: 'fixed' as const, section_id: null, section_name: null, status: 'published' as const, published_at: new Date().toISOString(), created_at: new Date().toISOString(), updated_at: new Date().toISOString(), source: 'manual' as const, source_metadata: null, ai_status: null, raw_content: null },
-      { id: 3, title: 'Updated dashboard layout for better navigation', content: 'Reorganised the sidebar and top nav for improved discoverability.', category: 'changed' as const, section_id: null, section_name: null, status: 'published' as const, published_at: new Date().toISOString(), created_at: new Date().toISOString(), updated_at: new Date().toISOString(), source: 'manual' as const, source_metadata: null, ai_status: null, raw_content: null },
+      { id: 1, title: 'Dark mode support', content: 'Added full dark mode with system preference detection.', category: 'added' as const, section_id: null, section_name: null, status: 'published' as const, published_at: new Date().toISOString(), entry_date: new Date().toISOString(), created_at: new Date().toISOString(), updated_at: new Date().toISOString(), source: 'manual' as const, source_metadata: null, ai_status: null, raw_content: null },
+      { id: 2, title: 'Login page not loading on mobile devices', content: 'Resolved an issue where the login form failed to render on iOS Safari.', category: 'fixed' as const, section_id: null, section_name: null, status: 'published' as const, published_at: new Date().toISOString(), entry_date: new Date().toISOString(), created_at: new Date().toISOString(), updated_at: new Date().toISOString(), source: 'manual' as const, source_metadata: null, ai_status: null, raw_content: null },
+      { id: 3, title: 'Updated dashboard layout for better navigation', content: 'Reorganised the sidebar and top nav for improved discoverability.', category: 'changed' as const, section_id: null, section_name: null, status: 'published' as const, published_at: new Date().toISOString(), entry_date: new Date().toISOString(), created_at: new Date().toISOString(), updated_at: new Date().toISOString(), source: 'manual' as const, source_metadata: null, ai_status: null, raw_content: null },
     ],
   }];
   const exampleStandalone = hasContent ? changelogData.standaloneEntries : [];
@@ -968,9 +1014,20 @@ admin.post('/settings/general', async (c) => {
 admin.post('/settings/display', async (c) => {
   const body = await c.req.parseBody();
   const entryGrouping = body['entry_grouping'] === 'section' ? 'section' : 'category';
+  const timezone = normalizeTimezone(body['timezone'] as string);
+  const dateGrouping = body['date_grouping'] === 'month' ? 'month' : 'day';
 
   try {
     await setSetting(c.env.DB, 'entry_grouping', entryGrouping);
+    await setSetting(c.env.DB, 'timezone', timezone);
+    await setSetting(c.env.DB, 'date_grouping', dateGrouping);
+
+    // Timezone & grouping affect every rendered page, including release detail
+    // pages which aren't covered by the post-mutation shared-page purge.
+    const url = new URL(c.req.url);
+    const baseUrl = c.env.BASE_URL || `${url.protocol}//${url.host}`;
+    c.executionCtx.waitUntil(purgeReleaseDetailPages(c.env.DB, baseUrl));
+
     setFlash(c, 'success', 'Display settings saved successfully.');
   } catch (err) {
     setFlash(c, 'error', 'Failed to save display settings.');

@@ -1,22 +1,18 @@
 import type { FC } from 'hono/jsx';
 import type { Release } from '../../db/schema';
+import { effectiveReleaseDate, formatInZone } from '../../services/datetime';
 
 interface ReleaseCardProps {
   release: Release & { entry_count: number };
+  timezone?: string;
 }
 
-export const ReleaseCard: FC<ReleaseCardProps> = ({ release }) => {
-  const dateStr = release.published_at
-    ? new Date(release.published_at).toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-      })
-    : new Date(release.created_at).toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-      });
+export const ReleaseCard: FC<ReleaseCardProps> = ({ release, timezone = 'UTC' }) => {
+  const dateStr = formatInZone(effectiveReleaseDate(release), timezone, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
 
   const summaryExcerpt =
     release.summary && release.summary.length > 120

@@ -1,9 +1,11 @@
 import type { FC } from 'hono/jsx';
 import type { EntryWithSection } from '../../db/schema';
 import { CategoryBadge } from './category-badge';
+import { effectiveEntryDate, formatInZone } from '../../services/datetime';
 
 interface EntryCardProps {
   entry: EntryWithSection;
+  timezone?: string;
 }
 
 const AiStatusIndicator: FC<{ status: string | null }> = ({ status }) => {
@@ -23,18 +25,12 @@ const AiStatusIndicator: FC<{ status: string | null }> = ({ status }) => {
   }
 };
 
-export const EntryCard: FC<EntryCardProps> = ({ entry }) => {
-  const dateStr = entry.published_at
-    ? new Date(entry.published_at).toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-      })
-    : new Date(entry.created_at).toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-      });
+export const EntryCard: FC<EntryCardProps> = ({ entry, timezone = 'UTC' }) => {
+  const dateStr = formatInZone(effectiveEntryDate(entry), timezone, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
 
   return (
     <a href={`/admin/entries/${entry.id}`} class="entry-card">

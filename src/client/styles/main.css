@@ -2359,6 +2359,30 @@ tbody tr:hover {
   margin-bottom: 0;
 }
 
+/* Date-first timeline: each node is a date, with releases / loose entries
+   nested beneath. The date heading is the prominent label for the node. */
+.changelog-timeline .timeline-date-heading {
+  display: block;
+  font-family: var(--font-heading);
+  font-size: var(--text-xl);
+  font-weight: 700;
+  color: var(--color-text);
+  letter-spacing: -0.01em;
+  margin-bottom: var(--space-5);
+}
+
+.changelog-timeline .timeline-release {
+  margin-bottom: var(--space-8);
+}
+
+.changelog-timeline .timeline-release:last-child {
+  margin-bottom: 0;
+}
+
+.changelog-timeline .timeline-standalone {
+  margin-top: var(--space-6);
+}
+
 .timeline-release-title {
   font-family: var(--font-heading);
   font-size: var(--text-xl);
@@ -3468,6 +3492,13 @@ tbody tr:hover {
   color: #555;
 }
 
+[data-theme="opencode"] .changelog-timeline .timeline-date-heading {
+  font-family: var(--font-mono);
+  font-size: var(--text-base);
+  font-weight: 700;
+  color: #e5e5e5;
+}
+
 [data-theme="opencode"] .timeline-release-title {
   font-family: var(--font-mono);
   font-size: var(--text-base);
@@ -3742,6 +3773,13 @@ tbody tr:hover {
   color: #9b9a97;
   text-transform: none;
   font-weight: 400;
+}
+
+[data-theme="notion"] .changelog-timeline .timeline-date-heading {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #37352f;
 }
 
 [data-theme="notion"] .timeline-release-title {

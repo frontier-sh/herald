@@ -2,6 +2,7 @@ import type { FC } from 'hono/jsx';
 import type { Release, EntryWithSection } from '../../db/schema';
 import { SettingsSection } from '../components/settings-form';
 import { Changelog } from './changelog';
+import { listTimezones } from '../../services/datetime';
 
 interface ReleaseWithEntries extends Release {
   entries: EntryWithSection[];
@@ -70,6 +71,9 @@ export const CustomisePage: FC<CustomisePageProps> = ({
   const faviconUrl = faviconKey ? `/images/${faviconKey}` : null;
   const currentTheme = settings['theme'] || 'herald';
   const primaryColor = settings['primary_color'] || '#4F46E5';
+  const currentTimezone = settings['timezone'] || 'UTC';
+  const dateGrouping = settings['date_grouping'] || 'day';
+  const timezones = listTimezones();
 
   const changelogUrl = baseUrl;
   const embedCode = `<script src="${baseUrl}/embed.js"></script>`;
@@ -157,6 +161,37 @@ export const CustomisePage: FC<CustomisePageProps> = ({
               </label>
             </div>
           </div>
+
+          <div class="form-group">
+            <label class="form-label">Split timeline by</label>
+            <p class="form-hint">How the timeline down the left is grouped by date.</p>
+            <div class="radio-group">
+              <label class="radio-label">
+                <input type="radio" name="date_grouping" value="day" checked={dateGrouping !== 'month'} />
+                <span>Day</span>
+                <span class="form-hint">A node per day (e.g. June 18, 2025)</span>
+              </label>
+              <label class="radio-label">
+                <input type="radio" name="date_grouping" value="month" checked={dateGrouping === 'month'} />
+                <span>Month</span>
+                <span class="form-hint">A node per month (e.g. June 2025)</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="timezone">Timezone</label>
+            <p class="form-hint">
+              Default timezone for dates shown on your public changelog. Visitors still see their own
+              local time where their browser supports it.
+            </p>
+            <select id="timezone" name="timezone" class="form-select">
+              {timezones.map((tz) => (
+                <option value={tz} selected={tz === currentTimezone}>{tz}</option>
+              ))}
+            </select>
+          </div>
+
           <div class="settings-section-footer">
             <button type="submit" class="btn btn-primary">
               Save Changes
@@ -303,6 +338,8 @@ export const CustomisePage: FC<CustomisePageProps> = ({
                   projectDescription={previewProjectDescription}
                   releases={previewReleases}
                   standaloneEntries={previewStandaloneEntries}
+                  timezone={currentTimezone}
+                  dateGrouping={dateGrouping === 'month' ? 'month' : 'day'}
                 />
               </div>
             </div>

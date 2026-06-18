@@ -2,6 +2,7 @@ import type { FC } from 'hono/jsx';
 import type { CommitInfo } from '../../services/github-commits';
 import { inferCategory } from '../../services/entries';
 import { CATEGORIES } from '../../db/schema';
+import { formatInZone } from '../../services/datetime';
 
 interface GeneratePageProps {
   sourceRepo: string | null;
@@ -22,7 +23,7 @@ const shortSha = (sha: string): string => sha.slice(0, 7);
 
 const formatDate = (dateStr: string): string => {
   if (!dateStr) return '';
-  return new Date(dateStr).toLocaleDateString('en-US', {
+  return formatInZone(dateStr, 'UTC', {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
