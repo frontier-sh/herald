@@ -104,7 +104,10 @@ export async function createEntry(
     .bind(
       data.title,
       data.content ?? '',
-      data.category ?? 'added',
+      // When no category is supplied, infer one from the commit subject rather
+      // than defaulting to a blanket 'added'. If AI is enabled, the queue worker
+      // later overrides this with the AI's choice.
+      data.category ?? inferCategory(data.title),
       data.section_id ?? null,
       data.source ?? 'manual',
       data.source_metadata ?? null,

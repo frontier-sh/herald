@@ -13,9 +13,8 @@ inputs:
     description: 'Herald API key'
     required: true
   category:
-    description: 'Entry category (added, changed, fixed, removed, deprecated, security)'
+    description: 'Optional entry category (added, changed, fixed, removed, deprecated, security). Leave unset to let Herald categorize automatically — when AI features are enabled it picks the category, otherwise Herald infers one from the commit subject.'
     required: false
-    default: 'changed'
   title:
     description: 'Entry title (defaults to commit message or release title)'
     required: false

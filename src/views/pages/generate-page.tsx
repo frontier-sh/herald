@@ -178,8 +178,16 @@ export const GeneratePage: FC<GeneratePageProps> = ({
                         </td>
                         <td>
                           <select name={`category_${commit.sha}`} class="form-select">
+                            {aiEnabled && (
+                              <option value="" selected>
+                                Auto (AI decides)
+                              </option>
+                            )}
                             {CATEGORIES.map((cat) => (
-                              <option value={cat} selected={cat === inferCategory(commit.title)}>
+                              <option
+                                value={cat}
+                                selected={!aiEnabled && cat === inferCategory(commit.title)}
+                              >
                                 {cat.charAt(0).toUpperCase() + cat.slice(1)}
                               </option>
                             ))}

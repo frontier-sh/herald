@@ -41,15 +41,17 @@ export async function enqueueAISummarization(
 }
 
 /**
- * Generate a polished changelog entry (title + body) from raw content using
- * Workers AI. The AI both rewrites the headline and cleans up the body; if it
- * fails to return a usable title, `title` comes back empty so callers can keep
- * the existing one.
+ * Generate a polished changelog entry (title + category + body) from raw
+ * content using Workers AI. The AI rewrites the headline, cleans up the body,
+ * and picks the most fitting category. `category` here is only an optional hint
+ * (e.g. the entry's current category) the model may override; if the AI fails
+ * to return a usable title or category, those come back empty/undefined so
+ * callers can keep the existing values.
  */
 export async function summarizeContent(
   ai: Ai,
   content: string,
-  category: string,
+  category?: string,
   model?: string,
   personality?: string,
 ): Promise<SummarizedEntry> {

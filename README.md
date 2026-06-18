@@ -134,10 +134,16 @@ curl -X POST https://herald.example.com/api/entries \
   -d '{
     "title": "Dark mode support",
     "content": "Added dark mode toggle in user preferences.",
-    "category": "added",
     "section_name": "Desktop"
   }'
 ```
+
+`category` is optional. Omit it and Herald categorizes the entry for you — when AI
+features are enabled the AI picks the best of `added`, `changed`, `fixed`,
+`removed`, `deprecated`, or `security` (and polishes the title and body);
+otherwise Herald infers one from the title. Pass an explicit `category` only when
+you want to set it yourself (note that with AI enabled, the AI may still
+re-categorize it).
 
 ### Sections
 
@@ -188,7 +194,6 @@ curl -X POST https://herald.example.com/api/webhook \
       {
         "title": "Fix login timeout",
         "content": "Resolved session expiry issue causing premature logouts.",
-        "category": "fixed",
         "section_name": "Core"
       }
     ]
@@ -232,8 +237,10 @@ jobs:
         with:
           herald-url: ${{ secrets.HERALD_URL }}
           api-key: ${{ secrets.HERALD_API_KEY }}
-          category: 'added'
 ```
+
+The entry is categorized automatically. Set the optional `category` input only if
+you want to choose it yourself.
 
 ## Configuration
 

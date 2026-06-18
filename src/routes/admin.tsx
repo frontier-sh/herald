@@ -157,9 +157,10 @@ admin.get('/entries', async (c) => {
 admin.get('/entries/new', async (c) => {
   const flash = getFlash(c);
   const sections = await listSections(c.env.DB);
+  const aiEnabled = (await getSetting(c.env.DB, 'ai_enabled')) === 'true';
   return c.html(
     <AdminLayout title="New Entry" currentPath="/admin/entries" flash={flash} githubUser={c.get('githubUser')}>
-      <EntryEdit sections={sections} />
+      <EntryEdit sections={sections} aiEnabled={aiEnabled} />
     </AdminLayout>,
   );
 });
@@ -171,7 +172,11 @@ admin.post('/entries', async (c) => {
   const title = body['title'] as string;
   const content = (body['content'] as string) || (body['content_raw'] as string) || '';
   const sectionName = ((body['section_name'] as string) || '').trim();
-  const category = (body['category'] as Category) || 'added';
+  // Empty category means "Auto" — let createEntry infer one (and AI override it
+  // later when enabled) rather than forcing a default.
+  const category = (((body['category'] as string) || '').trim() || undefined) as
+    | Category
+    | undefined;
   const status = body['status'] as string;
 
   if (!title) {
@@ -233,10 +238,11 @@ admin.get('/entries/:id', async (c) => {
   }
 
   const sections = await listSections(c.env.DB);
+  const aiEnabled = (await getSetting(c.env.DB, 'ai_enabled')) === 'true';
 
   return c.html(
     <AdminLayout title={`Edit: ${entry.title}`} currentPath="/admin/entries" flash={flash} githubUser={c.get('githubUser')}>
-      <EntryEdit entry={entry} sections={sections} />
+      <EntryEdit entry={entry} sections={sections} aiEnabled={aiEnabled} />
     </AdminLayout>,
   );
 });
@@ -254,7 +260,9 @@ admin.post('/entries/:id', async (c) => {
   const title = body['title'] as string;
   const content = (body['content'] as string) || (body['content_raw'] as string) || '';
   const sectionName = ((body['section_name'] as string) || '').trim();
-  const category = (body['category'] as Category) || 'added';
+  // Empty category means "Auto" — leave the existing category untouched rather
+  // than overwriting it with a blanket default.
+  const category = ((body['category'] as string) || '').trim();
   const status = body['status'] as string;
 
   if (!title) {
@@ -272,9 +280,11 @@ admin.post('/entries/:id', async (c) => {
     const updateData: Record<string, unknown> = {
       title,
       content,
-      category,
       section_id: sectionId,
     };
+    if (category) {
+      updateData.category = category as Category;
+    }
 
     if (status === 'published') {
       updateData.status = 'published';
