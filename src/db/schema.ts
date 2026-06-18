@@ -48,6 +48,8 @@ export interface Entry {
   updated_at: string;
   source: Source;
   source_metadata: string | null;
+  // Related git commit ID when generated from a GitHub commit; null otherwise.
+  commit_sha: string | null;
   ai_status: AiStatus;
   raw_content: string | null;
 }

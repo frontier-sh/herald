@@ -48,6 +48,11 @@ export const EntryCard: FC<EntryCardProps> = ({ entry, timezone = 'UTC' }) => {
         )}
         <span class="entry-card-date">{dateStr}</span>
         <span class="entry-card-source">{entry.source}</span>
+        {entry.commit_sha && (
+          <span class="entry-card-source" style="font-family: monospace;">
+            {entry.commit_sha.slice(0, 7)}
+          </span>
+        )}
       </div>
     </a>
   );

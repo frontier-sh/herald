@@ -66,6 +66,28 @@ export const EntryEdit: FC<EntryEditProps> = ({ entry, sections = [], aiEnabled 
 
       <EntryForm entry={entry} sections={sections} action={action} aiEnabled={aiEnabled} timezone={timezone} />
 
+      {isEditing && entry!.commit_sha && (() => {
+        let url = '';
+        try {
+          url = JSON.parse(entry!.source_metadata || '{}').url || '';
+        } catch {
+          url = '';
+        }
+        const short = entry!.commit_sha.slice(0, 7);
+        return (
+          <p class="text-muted text-sm" style="margin-top: 0.75rem;">
+            Commit{' '}
+            {url ? (
+              <a href={url} target="_blank" rel="noopener" style="font-family: monospace;">
+                {short}
+              </a>
+            ) : (
+              <span style="font-family: monospace;">{short}</span>
+            )}
+          </p>
+        );
+      })()}
+
       {isEditing && entry!.raw_content && (
         <details class="ai-original-content">
           <summary class="ai-original-content-toggle">

@@ -42,6 +42,8 @@ export interface CreateEntryData {
   section_id?: number | null;
   source?: string;
   source_metadata?: string;
+  /** Related git commit ID, set when generating an entry from a GitHub commit. */
+  commit_sha?: string;
   /**
    * ISO timestamp to preserve as the entry's `created_at` (e.g. the original
    * commit date). When omitted, the database default of `datetime('now')` is
@@ -104,8 +106,8 @@ export async function createEntry(
 ): Promise<EntryWithSection> {
   const result = await db
     .prepare(
-      `INSERT INTO entries (title, content, category, section_id, source, source_metadata, created_at, entry_date)
-       VALUES (?, ?, ?, ?, ?, ?, COALESCE(datetime(?), datetime('now')), datetime(?))
+      `INSERT INTO entries (title, content, category, section_id, source, source_metadata, commit_sha, created_at, entry_date)
+       VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(datetime(?), datetime('now')), datetime(?))
        RETURNING *`,
     )
     .bind(
@@ -118,6 +120,7 @@ export async function createEntry(
       data.section_id ?? null,
       data.source ?? 'manual',
       data.source_metadata ?? null,
+      data.commit_sha ?? null,
       data.created_at ?? null,
       // Editable change date. When omitted, leave NULL so display/grouping
       // resolves via effectiveEntryDate() (published_at -> created_at).
@@ -148,6 +151,7 @@ export async function updateEntry(
     'status',
     'source',
     'source_metadata',
+    'commit_sha',
     'entry_date',
   ] as const;
 
@@ -198,6 +202,14 @@ export async function publishEntry(
     .bind(id)
     .run();
   return getEntry(db, id);
+}
+
+/** SHAs of commits already imported as entries, for de-duping the Generate flow. */
+export async function getImportedCommitShas(db: D1Database): Promise<Set<string>> {
+  const result = await db
+    .prepare('SELECT commit_sha FROM entries WHERE commit_sha IS NOT NULL')
+    .all<{ commit_sha: string }>();
+  return new Set(result.results.map((r) => r.commit_sha));
 }
 
 export async function getDraftEntries(db: D1Database): Promise<EntryWithSection[]> {
