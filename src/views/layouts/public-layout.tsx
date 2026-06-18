@@ -9,6 +9,7 @@ interface PublicLayoutProps {
   logoUrl?: string | null;
   faviconUrl?: string | null;
   theme?: string;
+  primaryColor?: string;
 }
 
 export const PublicLayout: FC<PublicLayoutProps> = ({
@@ -19,6 +20,7 @@ export const PublicLayout: FC<PublicLayoutProps> = ({
   logoUrl,
   faviconUrl,
   theme,
+  primaryColor,
 }) => {
   const displayName = projectName || 'Changelog';
   const pageTitle = title ? `${title} - ${displayName}` : displayName;
@@ -51,7 +53,11 @@ export const PublicLayout: FC<PublicLayoutProps> = ({
         {faviconUrl && <link rel="icon" href={faviconUrl} />}
         <ClientHead />
       </head>
-      <body class="public-body" data-theme={theme || 'herald'}>
+      <body
+        class="public-body"
+        data-theme={theme || 'herald'}
+        style={primaryColor ? `--color-primary: ${primaryColor}` : undefined}
+      >
         <div class="public-layout">
           <header class="public-header">
             <div class="public-header-inner">

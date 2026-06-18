@@ -21,6 +21,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initBrandUploaders();
   initSectionCombo();
   initThemePicker();
+  initPrimaryColor();
   initGenerateMode();
   initGenerateSelectAll();
 });
@@ -895,5 +896,59 @@ function initThemePicker(): void {
         body: formData,
       });
     });
+  });
+}
+
+/**
+ * Primary colour picker: live preview while adjusting + debounced auto-save.
+ */
+function initPrimaryColor(): void {
+  const container = document.querySelector<HTMLElement>('[data-primary-color]');
+  if (!container) return;
+
+  const colorInput = container.querySelector<HTMLInputElement>('[data-primary-color-input]');
+  const hexInput = container.querySelector<HTMLInputElement>('[data-primary-color-hex]');
+  const previewFrame = document.querySelector<HTMLElement>('[data-theme-preview] .theme-preview-frame');
+  if (!colorInput || !hexInput) return;
+
+  const isValidHex = (v: string): boolean => /^#[0-9a-fA-F]{6}$/.test(v);
+
+  let saveTimer: ReturnType<typeof setTimeout> | undefined;
+  const save = (value: string): void => {
+    if (saveTimer) clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      const formData = new FormData();
+      formData.append('primary_color', value);
+      fetch('/admin/settings/primary-color', {
+        method: 'POST',
+        body: formData,
+      });
+    }, 400);
+  };
+
+  // Apply colour to the live preview without waiting for a save/reload.
+  const applyLive = (value: string): void => {
+    if (previewFrame) previewFrame.style.setProperty('--color-primary', value);
+  };
+
+  // Native colour input: fires continuously while dragging.
+  colorInput.addEventListener('input', () => {
+    const value = colorInput.value.toUpperCase();
+    hexInput.value = value;
+    applyLive(value);
+  });
+  colorInput.addEventListener('change', () => {
+    save(colorInput.value.toUpperCase());
+  });
+
+  // Hex text field: keep in sync; only act on valid hex values.
+  hexInput.addEventListener('input', () => {
+    let value = hexInput.value.trim();
+    if (value && !value.startsWith('#')) value = '#' + value;
+    if (!isValidHex(value)) return;
+    value = value.toUpperCase();
+    colorInput.value = value;
+    applyLive(value);
+    save(value);
   });
 }

@@ -55,8 +55,9 @@ export async function fetchChangelogData(db: D1Database) {
   const entryGrouping = (settings['entry_grouping'] as 'category' | 'section') || 'category';
 
   const theme = settings['theme'] || 'herald';
+  const primaryColor = settings['primary_color'] || '';
 
-  return { projectName, projectDescription, releases, standaloneEntries, logoUrl, faviconUrl, entryGrouping, theme };
+  return { projectName, projectDescription, releases, standaloneEntries, logoUrl, faviconUrl, entryGrouping, theme, primaryColor };
 }
 
 const pub = new Hono<{ Bindings: Bindings }>();
@@ -108,7 +109,7 @@ pub.get('/', async (c) => {
   const cached = await getCachedResponse(c.req.raw);
   if (cached) return cached;
 
-  const { projectName, projectDescription, releases, standaloneEntries, logoUrl, faviconUrl, entryGrouping, theme } =
+  const { projectName, projectDescription, releases, standaloneEntries, logoUrl, faviconUrl, entryGrouping, theme, primaryColor } =
     await fetchChangelogData(c.env.DB);
 
   const response = await c.html(
@@ -119,6 +120,7 @@ pub.get('/', async (c) => {
       logoUrl={logoUrl}
       faviconUrl={faviconUrl}
       theme={theme}
+      primaryColor={primaryColor}
     >
       <Changelog
         projectName={projectName}
@@ -167,6 +169,7 @@ pub.get('/releases/:slug', async (c) => {
   const faviconUrl = faviconKey ? `/images/${faviconKey}` : null;
   const entryGrouping = (settings['entry_grouping'] as 'category' | 'section') || 'category';
   const theme = settings['theme'] || 'herald';
+  const primaryColor = settings['primary_color'] || '';
 
   const pageTitle = full.title ? `${full.version} – ${full.title}` : full.version;
   const description = full.summary || projectDescription;
@@ -179,6 +182,7 @@ pub.get('/releases/:slug', async (c) => {
       logoUrl={logoUrl}
       faviconUrl={faviconUrl}
       theme={theme}
+      primaryColor={primaryColor}
     >
       <ReleaseDetail
         projectName={projectName}
@@ -200,11 +204,11 @@ pub.get('/embed', async (c) => {
   const cached = await getCachedResponse(c.req.raw);
   if (cached) return cached;
 
-  const { projectName, projectDescription, releases, standaloneEntries, logoUrl, faviconUrl, entryGrouping, theme } =
+  const { projectName, projectDescription, releases, standaloneEntries, faviconUrl, entryGrouping, theme, primaryColor } =
     await fetchChangelogData(c.env.DB);
 
   const response = await c.html(
-    <EmbedLayout faviconUrl={faviconUrl} theme={theme}>
+    <EmbedLayout faviconUrl={faviconUrl} theme={theme} primaryColor={primaryColor}>
       <Changelog
         projectName={projectName}
         projectDescription={projectDescription}
