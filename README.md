@@ -145,6 +145,11 @@ otherwise Herald infers one from the title. Pass an explicit `category` only whe
 you want to set it yourself (note that with AI enabled, the AI may still
 re-categorize it).
 
+`commit_sha` is optional. Set it to the originating git commit SHA and Herald
+will use it to de-duplicate against the **Generate from commits** flow, so a
+commit already sent via the API isn't offered for import again. Both
+`/api/entries` and `/api/webhook` accept it.
+
 ### Sections
 
 | Method | Endpoint | Description |

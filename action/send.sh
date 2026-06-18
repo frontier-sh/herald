@@ -169,6 +169,20 @@ if [[ -n "${HERALD_SECTION:-}" ]]; then
   ENTRY=$(echo "$ENTRY" | jq --arg section "$HERALD_SECTION" '. + {section_name: $section}')
 fi
 
+# Attach the commit SHA so Herald can de-duplicate this entry against its
+# "Generate from commits" flow. Prefer an explicit input, then the pushed tip
+# commit, then HEAD. Stays empty (and is omitted) when none can be resolved.
+COMMIT_SHA="${HERALD_COMMIT_SHA:-}"
+if [[ -z "$COMMIT_SHA" && -n "${EVENT_AFTER:-}" && "$EVENT_AFTER" != "$ZERO_SHA" ]]; then
+  COMMIT_SHA="$EVENT_AFTER"
+fi
+if [[ -z "$COMMIT_SHA" ]]; then
+  COMMIT_SHA="$(git rev-parse HEAD 2>/dev/null || true)"
+fi
+if [[ -n "$COMMIT_SHA" ]]; then
+  ENTRY=$(echo "$ENTRY" | jq --arg commit_sha "$COMMIT_SHA" '. + {commit_sha: $commit_sha}')
+fi
+
 # ─── Determine release block ──────────────────────────────
 
 VERSION="${HERALD_VERSION:-}"
