@@ -9,14 +9,37 @@
 # Because it runs as you, no extra GitHub App, secret, or repo setting is
 # needed — unlike a GitHub Action, your own credentials can open PRs.
 #
-# Usage:   npm run update
+# By default, merge conflicts are resolved in favour of upstream (so the sync
+# always lands cleanly and the PR shows you upstream's version). Pass
+# --no-auto-resolve (or set HERALD_NO_AUTO_RESOLVE=1) to instead stop on
+# conflicts and resolve them by hand.
+#
+# Usage:   npm run update [-- --no-auto-resolve]
 # Config:  HERALD_UPSTREAM         (default https://github.com/frontier-sh/herald.git)
 #          HERALD_UPSTREAM_BRANCH  (default main)
+#          HERALD_NO_AUTO_RESOLVE  (set to disable auto-resolving conflicts)
 set -euo pipefail
 
 UPSTREAM="${HERALD_UPSTREAM:-https://github.com/frontier-sh/herald.git}"
 UPSTREAM_BRANCH="${HERALD_UPSTREAM_BRANCH:-main}"
 SYNC_BRANCH="sync/upstream"
+
+# Auto-resolve conflicts in favour of upstream unless disabled via env or flag.
+AUTO_RESOLVE=true
+if [ -n "${HERALD_NO_AUTO_RESOLVE:-}" ]; then
+  AUTO_RESOLVE=false
+fi
+for arg in "$@"; do
+  case "$arg" in
+    --no-auto-resolve) AUTO_RESOLVE=false ;;
+    --auto-resolve)    AUTO_RESOLVE=true ;;
+    *)
+      echo "Unknown argument: $arg" >&2
+      echo "Usage: npm run update [-- --no-auto-resolve]" >&2
+      exit 1
+      ;;
+  esac
+done
 
 if [ -n "$(git status --porcelain)" ]; then
   echo "Your working tree has uncommitted changes. Commit or stash them first." >&2
@@ -51,7 +74,13 @@ git checkout -B "$SYNC_BRANCH" "$BASE_BRANCH"
 
 # --allow-unrelated-histories stitches the template-created history to upstream
 # on the first sync; it's a harmless no-op afterward.
-if ! git merge --no-edit --allow-unrelated-histories "upstream/${UPSTREAM_BRANCH}"; then
+# -X theirs auto-resolves any conflicts in favour of upstream (unless disabled).
+MERGE_ARGS=(--no-edit --allow-unrelated-histories)
+if [ "$AUTO_RESOLVE" = true ]; then
+  echo "Conflicts will be auto-resolved in favour of upstream (--no-auto-resolve to disable)."
+  MERGE_ARGS+=(-X theirs)
+fi
+if ! git merge "${MERGE_ARGS[@]}" "upstream/${UPSTREAM_BRANCH}"; then
   echo
   echo "Merge hit conflicts. Resolve them, run 'git commit', then:" >&2
   echo "  git push -u origin $SYNC_BRANCH" >&2

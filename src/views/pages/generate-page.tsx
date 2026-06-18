@@ -9,6 +9,8 @@ interface GeneratePageProps {
   aiEnabled: boolean;
   /** Present once a fetch has run. */
   commits?: CommitInfo[];
+  /** SHAs already imported as entries — unchecked by default to avoid duplicates. */
+  importedShas?: Set<string>;
   /** True when a fetch was attempted (so we can show an empty state). */
   fetched?: boolean;
   mode?: 'count' | 'range';
@@ -34,6 +36,7 @@ export const GeneratePage: FC<GeneratePageProps> = ({
   sourceRepo,
   aiEnabled,
   commits,
+  importedShas = new Set<string>(),
   fetched,
   mode = 'count',
   count = 20,
@@ -129,7 +132,11 @@ export const GeneratePage: FC<GeneratePageProps> = ({
               <div class="section-header">
                 <h2>{commits.length} commit{commits.length === 1 ? '' : 's'} found</h2>
                 <label class="text-sm" style="cursor:pointer;">
-                  <input type="checkbox" data-select-all checked /> Select all
+                  <input
+                    type="checkbox"
+                    data-select-all
+                    checked={commits.every((commit) => !importedShas.has(commit.sha))}
+                  /> Select all
                 </label>
               </div>
 
@@ -145,14 +152,16 @@ export const GeneratePage: FC<GeneratePageProps> = ({
                     </tr>
                   </thead>
                   <tbody>
-                    {commits.map((commit) => (
+                    {commits.map((commit) => {
+                      const imported = importedShas.has(commit.sha);
+                      return (
                       <tr>
                         <td>
                           <input
                             type="checkbox"
                             name="selected"
                             value={commit.sha}
-                            checked
+                            checked={!imported}
                             data-commit-checkbox
                           />
                           <input type="hidden" name={`title_${commit.sha}`} value={commit.title} />
@@ -165,6 +174,9 @@ export const GeneratePage: FC<GeneratePageProps> = ({
                             <strong>{commit.title || '(no message)'}</strong>
                             {commit.isMerge && (
                               <span class="text-muted text-sm"> · merge</span>
+                            )}
+                            {imported && (
+                              <span class="text-muted text-sm"> · already imported</span>
                             )}
                           </div>
                           <a
@@ -197,7 +209,8 @@ export const GeneratePage: FC<GeneratePageProps> = ({
                         <td class="text-muted text-sm">{commit.author}</td>
                         <td class="text-muted text-sm">{formatDate(commit.date)}</td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

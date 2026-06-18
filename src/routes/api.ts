@@ -61,6 +61,7 @@ api.post('/entries', async (c) => {
       section_name?: string;
       source?: string;
       source_metadata?: string;
+      commit_sha?: string;
     }>();
 
     if (!body.title) {
@@ -80,6 +81,7 @@ api.post('/entries', async (c) => {
       section_id: sectionId,
       source: body.source,
       source_metadata: body.source_metadata,
+      commit_sha: body.commit_sha?.trim() || undefined,
     });
 
     // Check if AI processing is enabled and enqueue if so
@@ -380,6 +382,7 @@ api.post('/webhook', async (c) => {
         content?: string;
         category?: Category;
         section_name?: string;
+        commit_sha?: string;
       }>;
     }>();
 
@@ -414,6 +417,7 @@ api.post('/webhook', async (c) => {
         category: item.category,
         section_id: sectionId,
         source: 'api',
+        commit_sha: item.commit_sha?.trim() || undefined,
       });
 
       // Enqueue for AI processing if enabled

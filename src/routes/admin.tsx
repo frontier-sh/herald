@@ -10,6 +10,7 @@ import {
   deleteEntry,
   publishEntry,
   inferCategory,
+  getImportedCommitShas,
 } from '../services/entries';
 import {
   listReleases,
@@ -512,6 +513,13 @@ admin.get('/generate', async (c) => {
     }
   }
 
+  // Mark commits that already have an entry so they're unchecked by default
+  // and re-running Generate doesn't create duplicates.
+  const importedShas =
+    commits && commits.length
+      ? await getImportedCommitShas(c.env.DB)
+      : new Set<string>();
+
   return c.html(
     <AdminLayout
       title="Generate from commits"
@@ -523,6 +531,7 @@ admin.get('/generate', async (c) => {
         sourceRepo={sourceRepo}
         aiEnabled={aiEnabled}
         commits={commits}
+        importedShas={importedShas}
         fetched={fetched}
         mode={mode}
         count={count}
@@ -571,6 +580,7 @@ admin.post('/generate', async (c) => {
         category,
         source: 'github',
         source_metadata: JSON.stringify({ sha, url, repo: sourceRepo }),
+        commit_sha: sha,
         // Preserve the commit's own date so entries keep their real order and
         // show when the work actually happened (not when they were imported).
         // Also set entry_date so it survives the publish-time COALESCE default.
@@ -907,9 +917,9 @@ admin.get('/customise', async (c) => {
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
     entries: [
-      { id: 1, title: 'Dark mode support', content: 'Added full dark mode with system preference detection.', category: 'added' as const, section_id: null, section_name: null, status: 'published' as const, published_at: new Date().toISOString(), entry_date: new Date().toISOString(), created_at: new Date().toISOString(), updated_at: new Date().toISOString(), source: 'manual' as const, source_metadata: null, ai_status: null, raw_content: null },
-      { id: 2, title: 'Login page not loading on mobile devices', content: 'Resolved an issue where the login form failed to render on iOS Safari.', category: 'fixed' as const, section_id: null, section_name: null, status: 'published' as const, published_at: new Date().toISOString(), entry_date: new Date().toISOString(), created_at: new Date().toISOString(), updated_at: new Date().toISOString(), source: 'manual' as const, source_metadata: null, ai_status: null, raw_content: null },
-      { id: 3, title: 'Updated dashboard layout for better navigation', content: 'Reorganised the sidebar and top nav for improved discoverability.', category: 'changed' as const, section_id: null, section_name: null, status: 'published' as const, published_at: new Date().toISOString(), entry_date: new Date().toISOString(), created_at: new Date().toISOString(), updated_at: new Date().toISOString(), source: 'manual' as const, source_metadata: null, ai_status: null, raw_content: null },
+      { id: 1, title: 'Dark mode support', content: 'Added full dark mode with system preference detection.', category: 'added' as const, section_id: null, section_name: null, status: 'published' as const, published_at: new Date().toISOString(), entry_date: new Date().toISOString(), created_at: new Date().toISOString(), updated_at: new Date().toISOString(), source: 'manual' as const, source_metadata: null, commit_sha: null, ai_status: null, raw_content: null },
+      { id: 2, title: 'Login page not loading on mobile devices', content: 'Resolved an issue where the login form failed to render on iOS Safari.', category: 'fixed' as const, section_id: null, section_name: null, status: 'published' as const, published_at: new Date().toISOString(), entry_date: new Date().toISOString(), created_at: new Date().toISOString(), updated_at: new Date().toISOString(), source: 'manual' as const, source_metadata: null, commit_sha: null, ai_status: null, raw_content: null },
+      { id: 3, title: 'Updated dashboard layout for better navigation', content: 'Reorganised the sidebar and top nav for improved discoverability.', category: 'changed' as const, section_id: null, section_name: null, status: 'published' as const, published_at: new Date().toISOString(), entry_date: new Date().toISOString(), created_at: new Date().toISOString(), updated_at: new Date().toISOString(), source: 'manual' as const, source_metadata: null, commit_sha: null, ai_status: null, raw_content: null },
     ],
   }];
   const exampleStandalone = hasContent ? changelogData.standaloneEntries : [];

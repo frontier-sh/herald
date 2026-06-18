@@ -43,6 +43,9 @@ inputs:
     description: 'Include merge commits in auto-collected content (default false).'
     required: false
     default: 'false'
+  commit-sha:
+    description: 'Commit SHA to associate with the entry, enabling de-duplication against the "Generate from commits" flow. Defaults to the pushed/HEAD commit.'
+    required: false
 
 outputs:
   entry-ids:
@@ -80,6 +83,7 @@ runs:
         HERALD_PUBLISH: ${{ inputs.publish }}
         HERALD_INCLUDE_PATHS: ${{ inputs.include-paths }}
         HERALD_INCLUDE_MERGES: ${{ inputs.include-merges }}
+        HERALD_COMMIT_SHA: ${{ inputs.commit-sha }}
         EVENT_NAME: ${{ github.event_name }}
         RELEASE_NAME: ${{ github.event.release.name }}
         RELEASE_BODY: ${{ github.event.release.body }}
