@@ -1629,6 +1629,8 @@ tbody tr:hover {
   line-height: 1.6;
   white-space: pre-wrap;
   font-family: var(--font-body);
+  max-height: 400px;
+  overflow-y: auto;
 }
 
 .ai-test-success {
@@ -2680,6 +2682,8 @@ tbody tr:hover {
   white-space: pre-wrap;
   word-wrap: break-word;
   overflow-x: auto;
+  max-height: 500px;
+  overflow-y: auto;
   margin: 0;
 }
 

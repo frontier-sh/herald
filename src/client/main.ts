@@ -73,6 +73,9 @@ function initEasyMDE(): void {
     autosave: {
       enabled: false,
     },
+    // Cap the editor height so long entries scroll internally instead of
+    // growing to fill the whole screen.
+    maxHeight: '400px',
     status: ['lines', 'words'],
     placeholder: 'Describe the change in detail... (Markdown supported)',
     uploadImage: true,
@@ -118,6 +121,9 @@ function initSummaryEasyMDE(): void {
     autosave: {
       enabled: false,
     },
+    // Cap the editor height so long summaries scroll internally instead of
+    // growing to fill the whole screen.
+    maxHeight: '400px',
     status: ['lines', 'words'],
     placeholder: 'Describe this release... (Markdown supported)',
     uploadImage: true,
