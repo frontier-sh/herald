@@ -6,9 +6,11 @@ interface EntryFormProps {
   entry?: EntryWithSection;
   sections?: Section[];
   action: string;
+  /** When AI features are enabled, offer an "Auto (AI decides)" category. */
+  aiEnabled?: boolean;
 }
 
-export const EntryForm: FC<EntryFormProps> = ({ entry, sections = [], action }) => {
+export const EntryForm: FC<EntryFormProps> = ({ entry, sections = [], action, aiEnabled = false }) => {
   const isEditing = !!entry;
 
   return (
@@ -62,6 +64,11 @@ export const EntryForm: FC<EntryFormProps> = ({ entry, sections = [], action }) 
             Category
           </label>
           <select id="category" name="category" class="form-select">
+            {aiEnabled && (
+              <option value="" selected={!isEditing}>
+                Auto (AI decides)
+              </option>
+            )}
             {CATEGORIES.map((cat) => (
               <option
                 value={cat}
@@ -71,6 +78,9 @@ export const EntryForm: FC<EntryFormProps> = ({ entry, sections = [], action }) 
               </option>
             ))}
           </select>
+          {aiEnabled && (
+            <p class="form-hint">Leave on Auto to let AI pick the category.</p>
+          )}
         </div>
       </div>
 

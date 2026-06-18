@@ -24,6 +24,10 @@
  *   node scripts/ai-harness.mjs --files a.txt b.txt   # use file contents as commits
  *   node scripts/ai-harness.mjs --model @cf/meta/llama-3.3-70b-instruct-fp8-fast 5
  *   node scripts/ai-harness.mjs --category fixed --personality casual 3
+ *
+ * `--category` is only an optional hint the model may override. By default no
+ * hint is sent, so the harness exercises the AI's own categorization and prints
+ * the category it chose (flagging any commit where it didn't return a valid one).
  */
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
@@ -103,14 +107,6 @@ function fileCommits(paths) {
   });
 }
 
-// Mirror of services/entries.ts inferCategory (conventional commits).
-function inferCategory(subject) {
-  const type = subject.match(/^(\w+)(\(.+\))?!?:/)?.[1]?.toLowerCase();
-  if (type === 'fix') return 'fixed';
-  if (type === 'revert') return 'removed';
-  return 'added';
-}
-
 // ── quality flags ─────────────────────────────────────────
 const TECH_PATTERNS = [
   { re: /\b[0-9a-f]{7,40}\b/, label: 'commit hash' },
@@ -131,6 +127,10 @@ function analyze(commit, summary) {
   if (!body) flags.push('empty-body'); // the "AI does nothing" failure mode
   if (!title) flags.push('empty-title');
   else if (title.toLowerCase() === commit.subject.toLowerCase()) flags.push('title-not-renamed');
+
+  // coerceSummary only keeps a category when it's one of the allowed values, so
+  // a missing one means the model omitted it or returned something invalid.
+  if (!summary.category) flags.push('no-category');
 
   if (/^\s*[{[]/.test(body) || /"(?:title|body|content)"\s*:/.test(body)) flags.push('json-leak');
   if (body && !/[.!?)\]"'`*_>]$/.test(body)) flags.push('truncated?');
@@ -159,10 +159,11 @@ async function main() {
 
   const results = [];
   for (const commit of commits) {
-    const category = opts.category || inferCategory(commit.subject);
+    // The hint is optional — by default we let the model categorize on its own.
+    const hint = opts.category || undefined;
     const request = buildSummarizationRequest({
       content: commit.message,
-      category,
+      category: hint,
       personality: opts.personality,
     });
 
@@ -187,12 +188,16 @@ async function main() {
     }
 
     const flags = analyze(commit, summary);
-    results.push({ commit, summary, flags, category });
+    results.push({ commit, summary, flags });
     console.log(flags.length ? c.red(`⚠ ${flags.join(', ')}`) : c.green('ok'));
     console.log(c.dim('  commit  : ') + commit.subject);
     console.log(c.dim('  title   : ') + c.bold(summary.title || c.red('(empty)')));
     console.log(c.dim('  body    : ') + (summary.content || c.red('(empty)')).replace(/\n/g, '\n            '));
-    console.log(c.dim(`  category: ${category}`));
+    console.log(
+      c.dim('  category: ') +
+        (summary.category ? c.bold(summary.category) : c.red('(none)')) +
+        (hint ? c.dim(` (hint: ${hint})`) : ''),
+    );
     console.log();
   }
 

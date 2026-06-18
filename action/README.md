@@ -14,7 +14,7 @@ A composite GitHub Action that sends changelog entries to your [Herald](https://
 | ----------------- | -------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `herald-url`      | Yes      | --          | URL of your Herald instance (e.g., `https://herald.example.com`)                                                                                                      |
 | `api-key`         | Yes      | --          | Herald API key (store as a GitHub secret)                                                                                                                             |
-| `category`        | No       | `changed`   | Entry category: `added`, `changed`, `fixed`, `removed`, `deprecated`, `security`                                                                                      |
+| `category`        | No       | Auto        | Entry category: `added`, `changed`, `fixed`, `removed`, `deprecated`, `security`. Leave unset to let Herald categorize automatically — with AI features enabled the AI picks the category (and may re-categorize an explicit one); otherwise Herald infers one from the title. |
 | `title`           | No       | Auto        | Entry title. Defaults to release name on `release` events, or the latest commit subject on `push`.                                                                    |
 | `content`         | No       | Auto        | Entry content in Markdown. Defaults to the release body on `release` events, or the bulleted commit list on `push`.                                                   |
 | `section`         | No       | --          | Section name for product-area grouping (e.g. `Core`, `Desktop`, `API`).                                                                                               |
@@ -58,7 +58,7 @@ jobs:
         with:
           herald-url: ${{ secrets.HERALD_URL }}
           api-key: ${{ secrets.HERALD_API_KEY }}
-          category: 'added'
+          # category is optional — omit it to let Herald categorize automatically.
 
       - name: Comment release URL
         if: steps.herald.outputs.release-url
@@ -85,7 +85,6 @@ jobs:
         with:
           herald-url: ${{ secrets.HERALD_URL }}
           api-key: ${{ secrets.HERALD_API_KEY }}
-          category: 'changed'
           # Tag-pushes (vX.Y.Z) auto-bind to a release; non-tag pushes won't.
 ```
 
@@ -116,11 +115,11 @@ on:
         description: 'Entry content (Markdown)'
         required: true
       category:
-        description: 'Category'
-        required: true
-        default: 'added'
+        description: 'Category (optional — leave as Auto to let Herald decide)'
+        required: false
+        default: ''
         type: choice
-        options: [added, changed, fixed, removed, deprecated, security]
+        options: ['', added, changed, fixed, removed, deprecated, security]
       section:
         description: 'Section (optional, e.g. Core, Desktop, API)'
         required: false
@@ -184,6 +183,6 @@ jobs:
 
 **`No commits in range matched include-paths; skipping`** -- the `include-paths` filter excluded everything in the range. The action exits successfully with empty outputs.
 
-**`Invalid category`** -- `category` must be one of `added`, `changed`, `fixed`, `removed`, `deprecated`, `security`.
+**`Invalid category`** -- when supplied, `category` must be one of `added`, `changed`, `fixed`, `removed`, `deprecated`, `security`. Leave it unset to let Herald categorize automatically.
 
 **`release-url` is empty after a successful run** -- no `version` was supplied or auto-detected. Pass `version` explicitly, or trigger on a `release` event, or push a tag matching HEAD.

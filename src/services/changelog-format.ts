@@ -6,12 +6,47 @@
  * The Workers AI call itself lives in ./ai.
  */
 
+/**
+ * The categories the AI is allowed to pick from.
+ *
+ * Must stay in sync with `CATEGORIES` in ../db/schema. We re-declare them here
+ * (rather than import) so this module keeps its zero-import property and can be
+ * unit-tested directly with `node --test`. A guard test in
+ * test/parse-summary.test.ts asserts the two lists never drift.
+ */
+export const SUMMARY_CATEGORIES = [
+  'added',
+  'changed',
+  'fixed',
+  'removed',
+  'deprecated',
+  'security',
+] as const;
+
+/**
+ * Validate/normalise a model-supplied category. Returns the canonical
+ * lower-case value when it's one of SUMMARY_CATEGORIES, otherwise `undefined`
+ * so callers can fall back to the existing category.
+ */
+export function normalizeCategory(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const normalized = value.trim().toLowerCase();
+  return (SUMMARY_CATEGORIES as readonly string[]).includes(normalized)
+    ? normalized
+    : undefined;
+}
+
 /** A polished changelog entry produced by the AI. */
 export interface SummarizedEntry {
   /** Rewritten, user-facing headline. Empty when the AI didn't provide one. */
   title: string;
   /** The changelog entry body in Markdown. */
   content: string;
+  /**
+   * The category the AI picked, validated against SUMMARY_CATEGORIES.
+   * `undefined` when the model omitted it or returned an unknown value.
+   */
+  category?: string;
 }
 
 /** The system + user messages sent to the model. */
@@ -34,22 +69,34 @@ const PERSONALITY_INSTRUCTIONS: Record<string, string> = {
  */
 export function buildSummarizationPrompt(opts: {
   content: string;
-  category: string;
+  category?: string;
   personality?: string;
 }): PromptParts {
   const toneInstruction =
     PERSONALITY_INSTRUCTIONS[opts.personality || 'neutral'] || PERSONALITY_INSTRUCTIONS.neutral;
 
+  // An optional hint the model may override — never a hard constraint.
+  const hint = normalizeCategory(opts.category);
+  const hintLine = hint ? `\nSuggested category (you may override): ${hint}` : '';
+
   const system = `You are writing a public changelog for the end users of a software product.
 Your readers are customers, not engineers — most have never seen the code. Turn the raw commit messages or notes below into a single short, friendly changelog entry that tells users what changed and why it helps them.
 
-Category: ${opts.category}
-Tone: ${toneInstruction}
+Tone: ${toneInstruction}${hintLine}
+
+Choose the single category that best fits the change, from exactly these values:
+- "added": a new feature or capability users didn't have before.
+- "changed": an existing feature behaves differently or was improved.
+- "fixed": a bug or broken behaviour was corrected.
+- "removed": a feature or option was taken away.
+- "deprecated": a feature still works but is being phased out.
+- "security": a security issue was addressed.
 
 Respond with ONLY a JSON object, no Markdown fences or extra prose, in exactly this shape:
-{"title": "...", "body": "..."}
+{"title": "...", "category": "...", "body": "..."}
 
 - "title": a short, benefit-focused headline of 8 words or fewer. Rewrite it from the user's point of view — never reuse the raw commit subject. No trailing period.
+- "category": one of added, changed, fixed, removed, deprecated, security.
 - "body": 1-3 short sentences of plain prose, in Markdown.
 
 Rules:
@@ -89,16 +136,24 @@ export const SUMMARIZATION_MAX_TOKENS = 8192;
  */
 export const DISABLE_THINKING = { thinking: false, enable_thinking: false } as const;
 
-/** JSON-mode schema constraining the model to a {title, body} object. */
+/**
+ * JSON-mode schema constraining the model to a {title, category, body} object.
+ * `category` is `required` and constrained to the allowed values so models that
+ * honour JSON mode always emit a valid category (constrained decoding won't let
+ * them skip it). The parser stays tolerant for models that don't — a missing or
+ * unknown category just falls back to the entry's existing one rather than
+ * failing the whole generation.
+ */
 export const SUMMARIZATION_RESPONSE_FORMAT = {
   type: 'json_schema',
   json_schema: {
     type: 'object',
     properties: {
       title: { type: 'string' },
+      category: { type: 'string', enum: [...SUMMARY_CATEGORIES] },
       body: { type: 'string' },
     },
-    required: ['title', 'body'],
+    required: ['title', 'category', 'body'],
   },
 } as const;
 
@@ -109,7 +164,7 @@ export const SUMMARIZATION_RESPONSE_FORMAT = {
  */
 export function buildSummarizationRequest(opts: {
   content: string;
-  category: string;
+  category?: string;
   personality?: string;
 }) {
   const { system, user } = buildSummarizationPrompt(opts);
@@ -180,7 +235,8 @@ function objectToSummary(obj: Record<string, unknown>): SummarizedEntry | null {
       : typeof obj.content === 'string'
         ? obj.content.trim()
         : '';
-  if (title || body) return { title, content: body };
+  const category = normalizeCategory(obj.category);
+  if (title || body) return { title, content: body, category };
   return null;
 }
 
@@ -283,6 +339,9 @@ function salvageJsonFields(text: string): SummarizedEntry | null {
   const titleMatch = text.match(/"title"\s*:\s*"((?:[^"\\]|\\.)*)"/);
   const title = titleMatch ? unescapeJsonString(titleMatch[1]).trim() : '';
 
+  const categoryMatch = text.match(/"category"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+  const category = categoryMatch ? normalizeCategory(categoryMatch[1]) : undefined;
+
   const bodyMatch = text.match(/"(?:body|content)"\s*:\s*"((?:[^"\\]|\\.)*)"?/);
   let body = '';
   if (bodyMatch) {
@@ -291,6 +350,6 @@ function salvageJsonFields(text: string): SummarizedEntry | null {
       .trim();
   }
 
-  if (title || body) return { title, content: body };
+  if (title || body) return { title, content: body, category };
   return null;
 }

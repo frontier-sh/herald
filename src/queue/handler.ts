@@ -70,15 +70,17 @@ export async function handleQueue(
         continue;
       }
 
-      // The body is rewritten; keep the existing title only if the AI didn't
-      // give us a better one.
+      // The body is rewritten; keep the existing title/category only if the AI
+      // didn't give us a better one. `summary.category` is already validated
+      // against the allowed list (undefined when the model omitted it).
       const title = summary.title || (entry.title as string);
       const content = summary.content;
+      const category = summary.category ?? (entry.category as string);
 
-      // Update entry with AI-generated title and content
+      // Update entry with AI-generated title, category, and content
       await env.DB.prepare(
-        'UPDATE entries SET title = ?, content = ?, ai_status = ?, updated_at = datetime(?) WHERE id = ?',
-      ).bind(title, content, 'completed', new Date().toISOString(), entryId).run();
+        'UPDATE entries SET title = ?, content = ?, category = ?, ai_status = ?, updated_at = datetime(?) WHERE id = ?',
+      ).bind(title, content, category, 'completed', new Date().toISOString(), entryId).run();
 
       // Purge cached public pages so the new content is visible. The queue has
       // no request to read a host from, so fall back to the origin cached from

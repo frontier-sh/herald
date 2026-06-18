@@ -5,6 +5,8 @@ import { EntryForm } from '../components/entry-form';
 interface EntryEditProps {
   entry?: EntryWithSection;
   sections?: Section[];
+  /** When AI features are enabled, the category field offers an "Auto" option. */
+  aiEnabled?: boolean;
 }
 
 const AiStatusBadge: FC<{ status: string | null }> = ({ status }) => {
@@ -24,7 +26,7 @@ const AiStatusBadge: FC<{ status: string | null }> = ({ status }) => {
   }
 };
 
-export const EntryEdit: FC<EntryEditProps> = ({ entry, sections = [] }) => {
+export const EntryEdit: FC<EntryEditProps> = ({ entry, sections = [], aiEnabled = false }) => {
   const isEditing = !!entry;
   const pageTitle = isEditing ? 'Edit Entry' : 'New Entry';
   const action = isEditing ? `/admin/entries/${entry!.id}` : '/admin/entries';
@@ -60,7 +62,7 @@ export const EntryEdit: FC<EntryEditProps> = ({ entry, sections = [] }) => {
         </div>
       </div>
 
-      <EntryForm entry={entry} sections={sections} action={action} />
+      <EntryForm entry={entry} sections={sections} action={action} aiEnabled={aiEnabled} />
 
       {isEditing && entry!.raw_content && (
         <details class="ai-original-content">

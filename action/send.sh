@@ -31,14 +31,19 @@ if [[ -z "${HERALD_API_KEY:-}" ]]; then
   exit 1
 fi
 
-CATEGORY="${HERALD_CATEGORY:-changed}"
-case "$CATEGORY" in
-  added|changed|fixed|removed|deprecated|security) ;;
-  *)
-    echo "::error::Invalid category '$CATEGORY'. Must be one of: added, changed, fixed, removed, deprecated, security."
-    exit 1
-    ;;
-esac
+# Category is optional. When omitted, Herald categorizes the entry itself (AI
+# picks the category when AI features are enabled, otherwise it's inferred from
+# the commit subject). Only validate when an explicit value was provided.
+CATEGORY="${HERALD_CATEGORY:-}"
+if [[ -n "$CATEGORY" ]]; then
+  case "$CATEGORY" in
+    added|changed|fixed|removed|deprecated|security) ;;
+    *)
+      echo "::error::Invalid category '$CATEGORY'. Must be one of: added, changed, fixed, removed, deprecated, security."
+      exit 1
+      ;;
+  esac
+fi
 
 if [[ -z "${GITHUB_OUTPUT:-}" ]]; then
   echo "::error::GITHUB_OUTPUT is not set. This action must run inside GitHub Actions."
@@ -152,8 +157,13 @@ fi
 ENTRY=$(jq -n \
   --arg title "$TITLE" \
   --arg content "$CONTENT" \
-  --arg category "$CATEGORY" \
-  '{title: $title, content: $content, category: $category}')
+  '{title: $title, content: $content}')
+
+# Only attach a category when one was explicitly provided; otherwise let Herald
+# auto-categorize the entry.
+if [[ -n "$CATEGORY" ]]; then
+  ENTRY=$(echo "$ENTRY" | jq --arg category "$CATEGORY" '. + {category: $category}')
+fi
 
 if [[ -n "${HERALD_SECTION:-}" ]]; then
   ENTRY=$(echo "$ENTRY" | jq --arg section "$HERALD_SECTION" '. + {section_name: $section}')

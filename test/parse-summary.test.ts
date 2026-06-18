@@ -13,7 +13,10 @@ import {
   parseSummary,
   buildSummarizationPrompt,
   buildSummarizationRequest,
+  normalizeCategory,
+  SUMMARY_CATEGORIES,
 } from '../src/services/changelog-format.ts';
+import { CATEGORIES } from '../src/db/schema.ts';
 
 test('parses a clean JSON object', () => {
   const r = parseSummary('{"title": "Faster search", "body": "Search now returns results instantly."}');
@@ -91,7 +94,7 @@ test('REGRESSION: request disables model reasoning so the answer is never starve
   assert.equal(request.chat_template_kwargs?.enable_thinking, false); // Qwen/GLM switch
 });
 
-test('prompt instructs public-facing output and the JSON shape', () => {
+test('prompt instructs public-facing output, category choice, and the JSON shape', () => {
   const { system, user } = buildSummarizationPrompt({
     content: 'feat: add CSV export to reports',
     category: 'added',
@@ -101,9 +104,57 @@ test('prompt instructs public-facing output and the JSON shape', () => {
   assert.match(system, /public changelog/i);
   assert.match(system, /NEVER expose internal details/);
   assert.match(system, /no commit hashes/i);
-  // The requested response shape.
-  assert.match(system, /\{"title": "\.\.\.", "body": "\.\.\."\}/);
-  // Category is interpolated; the raw content rides in the user message.
-  assert.match(system, /Category: added/);
+  // The requested response shape now includes a category field.
+  assert.match(system, /\{"title": "\.\.\.", "category": "\.\.\.", "body": "\.\.\."\}/);
+  // The model is asked to choose a category and the allowed values are listed.
+  assert.match(system, /Choose the single category/i);
+  for (const cat of SUMMARY_CATEGORIES) {
+    assert.match(system, new RegExp(`"${cat}"`));
+  }
+  // A provided category is only a hint the model may override.
+  assert.match(system, /Suggested category \(you may override\): added/);
   assert.match(user, /add CSV export to reports/);
+});
+
+test('prompt omits the suggested-category hint when no category is provided', () => {
+  const { system } = buildSummarizationPrompt({
+    content: 'feat: add CSV export to reports',
+  });
+  assert.ok(!/Suggested category/.test(system), 'no hint line when category is absent');
+  // It still asks the model to choose one.
+  assert.match(system, /Choose the single category/i);
+});
+
+test('parses a valid category from a clean object', () => {
+  const r = parseSummary('{"title": "Faster search", "category": "fixed", "body": "Search is snappier."}');
+  assert.equal(r.category, 'fixed');
+});
+
+test('normalizes category case-insensitively', () => {
+  assert.equal(normalizeCategory('Fixed'), 'fixed');
+  assert.equal(normalizeCategory('  SECURITY '), 'security');
+});
+
+test('an unknown or missing category yields undefined', () => {
+  assert.equal(normalizeCategory('bugfix'), undefined);
+  assert.equal(normalizeCategory(undefined), undefined);
+  const r = parseSummary('{"title": "Faster search", "category": "bananas", "body": "Search is snappier."}');
+  assert.equal(r.category, undefined);
+  const noCat = parseSummary('{"title": "Faster search", "body": "Search is snappier."}');
+  assert.equal(noCat.category, undefined);
+});
+
+test('salvages a category from truncated JSON', () => {
+  const truncated =
+    '{"title": "Search-aware filters", "category": "fixed", "body": "Fixed an issue where the filters did not reflect the active search and the';
+  const r = parseSummary(truncated);
+  assert.equal(r.title, 'Search-aware filters');
+  assert.equal(r.category, 'fixed');
+  assert.ok(r.content.startsWith('Fixed an issue where'));
+});
+
+test('SUMMARY_CATEGORIES stays in sync with the DB CATEGORIES enum', () => {
+  // changelog-format.ts re-declares the list to stay import-free for node --test.
+  // This guard makes sure it never drifts from the single source of truth.
+  assert.deepEqual([...SUMMARY_CATEGORIES], [...CATEGORIES]);
 });
