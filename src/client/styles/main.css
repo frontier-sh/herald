@@ -266,10 +266,9 @@ pre code {
 
 .sidebar-brand-byline {
   font-family: var(--font-heading);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
   color: var(--color-sidebar-text);
 }
 
@@ -3103,7 +3102,7 @@ tbody tr:hover {
 
 .radio-label {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: var(--space-3);
   padding: var(--space-3) var(--space-4);
   border: 1px solid var(--color-border);
@@ -3117,7 +3116,6 @@ tbody tr:hover {
 }
 
 .radio-label input[type="radio"] {
-  margin-top: 3px;
   flex-shrink: 0;
 }
 

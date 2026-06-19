@@ -73,6 +73,9 @@ export const CustomisePage: FC<CustomisePageProps> = ({
   const primaryColor = settings['primary_color'] || '#4F46E5';
   const currentTimezone = settings['timezone'] || 'UTC';
   const dateGrouping = settings['date_grouping'] || 'day';
+  const showTitle = settings['show_title'] !== 'false';
+  const showDescription = settings['show_description'] !== 'false';
+  const hideAttribution = settings['hide_attribution'] === 'true';
   const timezones = listTimezones();
 
   const changelogUrl = baseUrl;
@@ -318,6 +321,60 @@ export const CustomisePage: FC<CustomisePageProps> = ({
           </div>
         </div>
 
+        {/* Changelog page elements */}
+        <div class="form-group" data-visibility-toggles>
+          <label class="form-label">Changelog page</label>
+          <p class="form-hint">Choose which header elements appear at the top of your public changelog page.</p>
+          <div class="settings-toggle-row">
+            <div class="settings-toggle-info">
+              <span class="settings-toggle-label">Show title</span>
+              <span class="settings-toggle-hint">Display the project name as a heading on the changelog page.</span>
+            </div>
+            <label class="toggle-switch">
+              <input
+                type="checkbox"
+                checked={showTitle}
+                data-visibility-toggle="show_title"
+              />
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <div class="settings-toggle-row">
+            <div class="settings-toggle-info">
+              <span class="settings-toggle-label">Show description</span>
+              <span class="settings-toggle-hint">Display the project description beneath the title on the changelog page.</span>
+            </div>
+            <label class="toggle-switch">
+              <input
+                type="checkbox"
+                checked={showDescription}
+                data-visibility-toggle="show_description"
+              />
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        </div>
+
+        {/* Herald attribution */}
+        <div class="form-group">
+          <label class="form-label">Attribution</label>
+          <p class="form-hint">A small "Powered by Herald" link in the footer of your public changelog.</p>
+          <div class="settings-toggle-row">
+            <div class="settings-toggle-info">
+              <span class="settings-toggle-label">Remove Herald attribution link</span>
+              <span class="settings-toggle-hint">When enabled, the footer is removed entirely from your public changelog.</span>
+            </div>
+            <label class="toggle-switch">
+              <input
+                type="checkbox"
+                checked={hideAttribution}
+                data-visibility-toggle="hide_attribution"
+              />
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        </div>
+
         {/* Live Preview */}
         <div class="form-group">
           <label class="form-label">Preview</label>
@@ -340,6 +397,8 @@ export const CustomisePage: FC<CustomisePageProps> = ({
                   standaloneEntries={previewStandaloneEntries}
                   timezone={currentTimezone}
                   dateGrouping={dateGrouping === 'month' ? 'month' : 'day'}
+                  showTitle={showTitle}
+                  showDescription={showDescription}
                 />
               </div>
             </div>

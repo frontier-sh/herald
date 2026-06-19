@@ -1093,6 +1093,32 @@ admin.post('/settings/primary-color', async (c) => {
   }
 });
 
+// ─── Settings: Public page visibility toggles ───────────
+
+admin.post('/settings/visibility', async (c) => {
+  const body = await c.req.parseBody();
+  const keys = ['show_title', 'show_description', 'hide_attribution'] as const;
+
+  try {
+    for (const key of keys) {
+      if (key in body) {
+        await setSetting(c.env.DB, key, body[key] === 'true' ? 'true' : 'false');
+      }
+    }
+
+    // Title/description render on the home changelog; the attribution footer
+    // renders on every public surface, including release detail pages which
+    // aren't covered by the post-mutation shared-page purge.
+    const url = new URL(c.req.url);
+    const baseUrl = c.env.BASE_URL || `${url.protocol}//${url.host}`;
+    c.executionCtx.waitUntil(purgeReleaseDetailPages(c.env.DB, baseUrl));
+
+    return c.json({ ok: true });
+  } catch (err) {
+    return c.json({ ok: false, error: 'Failed to save visibility settings.' }, 500);
+  }
+});
+
 // ─── Settings: Publishing ───────────────────────────────
 
 admin.post('/settings/publishing', async (c) => {

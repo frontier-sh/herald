@@ -24,6 +24,8 @@ interface ChangelogProps {
   entryGrouping?: 'category' | 'section';
   timezone?: string;
   dateGrouping?: DateGrouping;
+  showTitle?: boolean;
+  showDescription?: boolean;
 }
 
 interface DateBucket {
@@ -258,6 +260,8 @@ export const Changelog: FC<ChangelogProps> = ({
   entryGrouping = 'category',
   timezone = 'UTC',
   dateGrouping = 'day',
+  showTitle = true,
+  showDescription = true,
 }) => {
   const hasContent = releases.length > 0 || standaloneEntries.length > 0;
   const allCategories = collectCategories(releases, standaloneEntries);
@@ -267,9 +271,9 @@ export const Changelog: FC<ChangelogProps> = ({
   return (
     <div class="changelog">
       <div class="changelog-hero">
-        <h1 class="changelog-title">{projectName}</h1>
+        <h1 class="changelog-title" style={showTitle ? undefined : 'display: none;'}>{projectName}</h1>
         {projectDescription && (
-          <p class="changelog-subtitle">{projectDescription}</p>
+          <p class="changelog-subtitle" style={showDescription ? undefined : 'display: none;'}>{projectDescription}</p>
         )}
       </div>
 

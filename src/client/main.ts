@@ -22,6 +22,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initSectionCombo();
   initThemePicker();
   initPrimaryColor();
+  initVisibilityToggles();
   initGenerateMode();
   initGenerateSelectAll();
   initLocalDates();
@@ -1055,5 +1056,45 @@ function initPrimaryColor(): void {
     colorInput.value = value;
     applyLive(value);
     save(value);
+  });
+}
+
+/**
+ * Public-page visibility toggles (changelog title/description, Herald
+ * attribution): update the live preview instantly and auto-save in the
+ * background without reloading, so the preview state survives the change.
+ */
+function initVisibilityToggles(): void {
+  const toggles = document.querySelectorAll<HTMLInputElement>('[data-visibility-toggle]');
+  if (toggles.length === 0) return;
+
+  const previewFrame = document.querySelector<HTMLElement>('[data-theme-preview] .theme-preview-frame');
+
+  const applyLive = (key: string, checked: boolean): void => {
+    if (!previewFrame) return;
+    if (key === 'show_title') {
+      const el = previewFrame.querySelector<HTMLElement>('.changelog-title');
+      if (el) el.style.display = checked ? '' : 'none';
+    } else if (key === 'show_description') {
+      const el = previewFrame.querySelector<HTMLElement>('.changelog-subtitle');
+      if (el) el.style.display = checked ? '' : 'none';
+    }
+    // hide_attribution has no preview element (the footer is not rendered in
+    // the preview), so it only needs saving.
+  };
+
+  toggles.forEach((toggle) => {
+    toggle.addEventListener('change', () => {
+      const key = toggle.getAttribute('data-visibility-toggle');
+      if (!key) return;
+      applyLive(key, toggle.checked);
+
+      const formData = new FormData();
+      formData.append(key, toggle.checked ? 'true' : 'false');
+      fetch('/admin/settings/visibility', {
+        method: 'POST',
+        body: formData,
+      });
+    });
   });
 }
