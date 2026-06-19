@@ -7,6 +7,8 @@ import { formatInZone } from '../../services/datetime';
 interface GeneratePageProps {
   sourceRepo: string | null;
   aiEnabled: boolean;
+  /** Default for the per-run auto-publish checkbox (the global setting). */
+  autoPublish?: boolean;
   /** Present once a fetch has run. */
   commits?: CommitInfo[];
   /** SHAs already imported as entries — unchecked by default to avoid duplicates. */
@@ -35,6 +37,7 @@ const formatDate = (dateStr: string): string => {
 export const GeneratePage: FC<GeneratePageProps> = ({
   sourceRepo,
   aiEnabled,
+  autoPublish = false,
   commits,
   importedShas = new Set<string>(),
   fetched,
@@ -215,7 +218,24 @@ export const GeneratePage: FC<GeneratePageProps> = ({
                 </table>
               </div>
 
-              <div class="form-actions-right" style="margin-top: 1rem;">
+              <div
+                class="form-actions-right"
+                style="margin-top: 1rem; gap: 1rem; align-items: center;"
+              >
+                {aiEnabled && (
+                  <label
+                    class="text-sm"
+                    style="display:flex; align-items:center; gap:0.5rem; cursor:pointer;"
+                  >
+                    <input
+                      type="checkbox"
+                      name="auto_publish"
+                      value="true"
+                      checked={autoPublish}
+                    />
+                    Auto-publish once AI has finished
+                  </label>
+                )}
                 <button type="submit" class="btn btn-primary">
                   Generate drafts
                 </button>

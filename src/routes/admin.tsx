@@ -470,6 +470,7 @@ admin.get('/generate', async (c) => {
   const sourceRepo = await getSetting(c.env.DB, 'source_repo');
   const githubPat = await getSourceToken(cfg);
   const aiEnabled = (await getSetting(c.env.DB, 'ai_enabled')) === 'true';
+  const autoPublish = (await getSetting(c.env.DB, 'auto_publish')) === 'true';
 
   const mode = c.req.query('mode') === 'range' ? 'range' : 'count';
   const countParam = parseInt(c.req.query('count') || '', 10);
@@ -530,6 +531,7 @@ admin.get('/generate', async (c) => {
       <GeneratePage
         sourceRepo={sourceRepo}
         aiEnabled={aiEnabled}
+        autoPublish={autoPublish}
         commits={commits}
         importedShas={importedShas}
         fetched={fetched}
@@ -560,6 +562,9 @@ admin.post('/generate', async (c) => {
 
   const aiEnabled = (await getSetting(c.env.DB, 'ai_enabled')) === 'true';
   const sourceRepo = (await getSetting(c.env.DB, 'source_repo')) || '';
+  // Only meaningful alongside AI: publish each entry once its rewrite lands, so
+  // the raw commit is never exposed. The checkbox is hidden when AI is off.
+  const autoPublish = aiEnabled && body['auto_publish'] === 'true';
 
   let created = 0;
   for (const sha of shas) {
@@ -588,11 +593,13 @@ admin.post('/generate', async (c) => {
         entry_date: date || undefined,
       });
 
-      // Mirror the manual-create flow: queue for AI cleanup when enabled.
+      // Mirror the manual-create flow: queue for AI cleanup when enabled. When
+      // auto-publish is requested, flag the entry to publish once AI finishes —
+      // the queue worker does that, so the raw commit is never shown publicly.
       if (aiEnabled && message) {
         await c.env.DB.prepare(
-          'UPDATE entries SET raw_content = ?, ai_status = ? WHERE id = ?',
-        ).bind(message, 'pending', entry.id).run();
+          'UPDATE entries SET raw_content = ?, ai_status = ?, publish_on_ai_complete = ? WHERE id = ?',
+        ).bind(message, 'pending', autoPublish ? 1 : 0, entry.id).run();
         await enqueueAISummarization(c.env.CHANGELOG_QUEUE, entry.id, message);
       }
       created++;
@@ -610,9 +617,11 @@ admin.post('/generate', async (c) => {
   setFlash(
     c,
     'success',
-    aiEnabled
-      ? `Created ${created} draft ${noun} — AI is polishing them now.`
-      : `Created ${created} draft ${noun}.`,
+    autoPublish
+      ? `Created ${created} draft ${noun} — AI is polishing them now and they'll publish automatically when it's done.`
+      : aiEnabled
+        ? `Created ${created} draft ${noun} — AI is polishing them now.`
+        : `Created ${created} draft ${noun}.`,
   );
   return c.redirect('/admin/entries');
 });
@@ -917,9 +926,9 @@ admin.get('/customise', async (c) => {
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
     entries: [
-      { id: 1, title: 'Dark mode support', content: 'Added full dark mode with system preference detection.', category: 'added' as const, section_id: null, section_name: null, status: 'published' as const, published_at: new Date().toISOString(), entry_date: new Date().toISOString(), created_at: new Date().toISOString(), updated_at: new Date().toISOString(), source: 'manual' as const, source_metadata: null, commit_sha: null, ai_status: null, raw_content: null },
-      { id: 2, title: 'Login page not loading on mobile devices', content: 'Resolved an issue where the login form failed to render on iOS Safari.', category: 'fixed' as const, section_id: null, section_name: null, status: 'published' as const, published_at: new Date().toISOString(), entry_date: new Date().toISOString(), created_at: new Date().toISOString(), updated_at: new Date().toISOString(), source: 'manual' as const, source_metadata: null, commit_sha: null, ai_status: null, raw_content: null },
-      { id: 3, title: 'Updated dashboard layout for better navigation', content: 'Reorganised the sidebar and top nav for improved discoverability.', category: 'changed' as const, section_id: null, section_name: null, status: 'published' as const, published_at: new Date().toISOString(), entry_date: new Date().toISOString(), created_at: new Date().toISOString(), updated_at: new Date().toISOString(), source: 'manual' as const, source_metadata: null, commit_sha: null, ai_status: null, raw_content: null },
+      { id: 1, title: 'Dark mode support', content: 'Added full dark mode with system preference detection.', category: 'added' as const, section_id: null, section_name: null, status: 'published' as const, published_at: new Date().toISOString(), entry_date: new Date().toISOString(), created_at: new Date().toISOString(), updated_at: new Date().toISOString(), source: 'manual' as const, source_metadata: null, commit_sha: null, ai_status: null, raw_content: null , publish_on_ai_complete: 0 },
+      { id: 2, title: 'Login page not loading on mobile devices', content: 'Resolved an issue where the login form failed to render on iOS Safari.', category: 'fixed' as const, section_id: null, section_name: null, status: 'published' as const, published_at: new Date().toISOString(), entry_date: new Date().toISOString(), created_at: new Date().toISOString(), updated_at: new Date().toISOString(), source: 'manual' as const, source_metadata: null, commit_sha: null, ai_status: null, raw_content: null , publish_on_ai_complete: 0 },
+      { id: 3, title: 'Updated dashboard layout for better navigation', content: 'Reorganised the sidebar and top nav for improved discoverability.', category: 'changed' as const, section_id: null, section_name: null, status: 'published' as const, published_at: new Date().toISOString(), entry_date: new Date().toISOString(), created_at: new Date().toISOString(), updated_at: new Date().toISOString(), source: 'manual' as const, source_metadata: null, commit_sha: null, ai_status: null, raw_content: null , publish_on_ai_complete: 0 },
     ],
   }];
   const exampleStandalone = hasContent ? changelogData.standaloneEntries : [];
