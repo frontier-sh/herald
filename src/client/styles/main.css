@@ -808,6 +808,78 @@ tbody tr:hover {
   margin: var(--space-8) 0;
 }
 
+/* Images embedded in changelog content (uploaded screenshots, etc.) */
+.prose img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: var(--space-6) auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 8px 24px rgba(0, 0, 0, 0.06);
+  cursor: zoom-in;
+}
+
+.prose img:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.prose figure {
+  margin: var(--space-6) 0;
+}
+
+/* The <figure> owns the vertical spacing; the image sits flush inside it. */
+.prose figure img {
+  margin: 0;
+}
+
+.prose figcaption {
+  margin-top: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  text-align: center;
+  font-style: italic;
+}
+
+/* Click-to-zoom lightbox for content images (see initImageLightbox in main.ts).
+   Theme-independent: a neutral dark backdrop reads well on every theme. */
+.herald-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-8);
+  background: rgba(0, 0, 0, 0.85);
+  cursor: zoom-out;
+  animation: herald-lightbox-in 0.15s ease-out;
+}
+
+.herald-lightbox img {
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.4);
+  cursor: default;
+}
+
+@keyframes herald-lightbox-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .herald-lightbox {
+    animation: none;
+  }
+}
+
 /* ============================================
    Custom Utilities
    ============================================ */
@@ -3618,6 +3690,20 @@ tbody tr:hover {
   background-color: #1a1a1a;
 }
 
+/* OpenCode: content images — sharp edges, dark hairline border, no glow */
+[data-theme="opencode"] .prose img {
+  border: 1px solid #333;
+  border-radius: var(--radius-sm);
+  box-shadow: none;
+}
+
+[data-theme="opencode"] .prose figcaption {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: #666;
+  font-style: normal;
+}
+
 /* OpenCode: Empty state */
 [data-theme="opencode"] .changelog-empty {
   color: #555;
@@ -3885,6 +3971,19 @@ tbody tr:hover {
 [data-theme="notion"] .prose a {
   color: var(--color-primary);
   text-decoration: underline;
+}
+
+/* Notion: content images — soft hairline border, subtle editorial shadow */
+[data-theme="notion"] .prose img {
+  border: 1px solid #e6e5e3;
+  border-radius: var(--radius-md);
+  box-shadow: 0 0 0 1px rgba(15, 15, 15, 0.03), 0 2px 6px rgba(15, 15, 15, 0.06);
+}
+
+[data-theme="notion"] .prose figcaption {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color: #9b9a97;
+  font-style: normal;
 }
 
 /* Notion: Empty state */
