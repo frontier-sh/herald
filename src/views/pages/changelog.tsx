@@ -71,6 +71,44 @@ export const CATEGORY_COLORS: Record<Category, { bg: string; text: string }> = {
   security: { bg: '#FED7AA', text: '#EA580C' },
 };
 
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+// Customise how images render in changelog content:
+//  - images always lazy-load;
+//  - a lone image on its own line becomes a block <figure>, and its alt text (if
+//    any) is surfaced as a <figcaption>. We do this in the paragraph renderer
+//    rather than the image renderer because <figure> is block content and is
+//    invalid inside the <p> that marked otherwise wraps around it.
+//  - an image inline within text stays a plain <img> (no caption).
+// Empty alt (EasyMDE's default on drag/drop/paste) yields a caption-less figure.
+marked.use({
+  renderer: {
+    image({ href, title, text }) {
+      const src = escapeHtml(href || '');
+      const alt = escapeHtml(text || '');
+      const titleAttr = title ? ` title="${escapeHtml(title)}"` : '';
+      return `<img src="${src}" alt="${alt}"${titleAttr} loading="lazy">`;
+    },
+    paragraph(token) {
+      const tokens = token.tokens ?? [];
+      const inner = this.parser.parseInline(tokens);
+      const only = tokens.length === 1 ? tokens[0] : null;
+      if (only && only.type === 'image') {
+        const alt = escapeHtml(only.text || '');
+        const caption = alt ? `<figcaption>${alt}</figcaption>` : '';
+        return `<figure>${inner}${caption}</figure>\n`;
+      }
+      return `<p>${inner}</p>\n`;
+    },
+  },
+});
+
 export function renderMarkdown(md: string): string {
   if (!md) return '';
   return marked.parse(md, { async: false }) as string;

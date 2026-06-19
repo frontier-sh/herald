@@ -25,6 +25,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initGenerateMode();
   initGenerateSelectAll();
   initLocalDates();
+  initImageLightbox();
 });
 
 /**
@@ -57,6 +58,67 @@ function initLocalDates(): void {
     } catch {
       /* keep server-rendered fallback */
     }
+  });
+}
+
+/**
+ * Click-to-zoom lightbox for images embedded in changelog content.
+ *
+ * Only runs on pages that render markdown content (`.prose` blocks) — i.e. the
+ * public changelog and release-detail pages — and is a no-op elsewhere (admin,
+ * editor). The enlarged view reuses the same image source: content images are
+ * already optimised to <=1920px, so no separate full-res asset is needed.
+ */
+function initImageLightbox(): void {
+  const imgs = document.querySelectorAll<HTMLImageElement>('.prose img');
+  if (imgs.length === 0) return;
+
+  let overlay: HTMLDivElement | null = null;
+
+  const onKey = (e: KeyboardEvent): void => {
+    if (e.key === 'Escape') close();
+  };
+
+  function close(): void {
+    if (!overlay) return;
+    overlay.remove();
+    overlay = null;
+    document.body.style.overflow = '';
+    document.removeEventListener('keydown', onKey);
+  }
+
+  function open(src: string, alt: string): void {
+    overlay = document.createElement('div');
+    overlay.className = 'herald-lightbox';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.setAttribute('aria-label', alt || 'Image preview');
+
+    const big = document.createElement('img');
+    big.src = src;
+    big.alt = alt;
+    overlay.appendChild(big);
+
+    // Click anywhere (including the image) closes the lightbox.
+    overlay.addEventListener('click', close);
+
+    document.body.appendChild(overlay);
+    document.body.style.overflow = 'hidden';
+    document.addEventListener('keydown', onKey);
+  }
+
+  imgs.forEach((img) => {
+    // Make each image a keyboard-operable trigger so the lightbox is reachable
+    // without a mouse (matching its role=dialog / Escape handling).
+    img.setAttribute('role', 'button');
+    img.setAttribute('tabindex', '0');
+    img.addEventListener('click', () => open(img.currentSrc || img.src, img.alt));
+    img.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        open(img.currentSrc || img.src, img.alt);
+      }
+    });
   });
 }
 
