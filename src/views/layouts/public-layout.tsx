@@ -10,6 +10,7 @@ interface PublicLayoutProps {
   faviconUrl?: string | null;
   theme?: string;
   primaryColor?: string;
+  hideAttribution?: boolean;
 }
 
 export const PublicLayout: FC<PublicLayoutProps> = ({
@@ -21,6 +22,7 @@ export const PublicLayout: FC<PublicLayoutProps> = ({
   faviconUrl,
   theme,
   primaryColor,
+  hideAttribution,
 }) => {
   const displayName = projectName || 'Changelog';
   const pageTitle = title ? `${title} - ${displayName}` : displayName;
@@ -82,11 +84,13 @@ export const PublicLayout: FC<PublicLayoutProps> = ({
               {children}
             </div>
           </main>
-          <footer class="public-footer">
-            <div class="public-footer-inner">
-              <span class="powered-by">Powered by <a href="https://github.com" target="_blank" rel="noopener noreferrer">Herald</a></span>
-            </div>
-          </footer>
+          {!hideAttribution && (
+            <footer class="public-footer">
+              <div class="public-footer-inner">
+                <span class="powered-by">Powered by <a href="https://frontier.sh/open-source/herald/" target="_blank" rel="noopener noreferrer">Herald</a></span>
+              </div>
+            </footer>
+          )}
         </div>
         <ClientBody />
       </body>

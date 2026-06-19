@@ -59,8 +59,11 @@ export async function fetchChangelogData(db: D1Database) {
   const primaryColor = settings['primary_color'] || '';
   const timezone = settings['timezone'] || 'UTC';
   const dateGrouping = (settings['date_grouping'] as 'day' | 'month') || 'day';
+  const showTitle = settings['show_title'] !== 'false';
+  const showDescription = settings['show_description'] !== 'false';
+  const hideAttribution = settings['hide_attribution'] === 'true';
 
-  return { projectName, projectDescription, releases, standaloneEntries, logoUrl, faviconUrl, entryGrouping, theme, primaryColor, timezone, dateGrouping };
+  return { projectName, projectDescription, releases, standaloneEntries, logoUrl, faviconUrl, entryGrouping, theme, primaryColor, timezone, dateGrouping, showTitle, showDescription, hideAttribution };
 }
 
 const pub = new Hono<{ Bindings: Bindings }>();
@@ -112,7 +115,7 @@ pub.get('/', async (c) => {
   const cached = await getCachedResponse(c.req.raw);
   if (cached) return cached;
 
-  const { projectName, projectDescription, releases, standaloneEntries, logoUrl, faviconUrl, entryGrouping, theme, primaryColor, timezone, dateGrouping } =
+  const { projectName, projectDescription, releases, standaloneEntries, logoUrl, faviconUrl, entryGrouping, theme, primaryColor, timezone, dateGrouping, showTitle, showDescription, hideAttribution } =
     await fetchChangelogData(c.env.DB);
 
   const response = await c.html(
@@ -124,6 +127,7 @@ pub.get('/', async (c) => {
       faviconUrl={faviconUrl}
       theme={theme}
       primaryColor={primaryColor}
+      hideAttribution={hideAttribution}
     >
       <Changelog
         projectName={projectName}
@@ -133,6 +137,8 @@ pub.get('/', async (c) => {
         entryGrouping={entryGrouping}
         timezone={timezone}
         dateGrouping={dateGrouping}
+        showTitle={showTitle}
+        showDescription={showDescription}
       />
     </PublicLayout>,
   );
@@ -176,6 +182,7 @@ pub.get('/releases/:slug', async (c) => {
   const theme = settings['theme'] || 'herald';
   const primaryColor = settings['primary_color'] || '';
   const timezone = settings['timezone'] || 'UTC';
+  const hideAttribution = settings['hide_attribution'] === 'true';
 
   const pageTitle = full.title ? `${full.version} – ${full.title}` : full.version;
   const description = full.summary || projectDescription;
@@ -189,6 +196,7 @@ pub.get('/releases/:slug', async (c) => {
       faviconUrl={faviconUrl}
       theme={theme}
       primaryColor={primaryColor}
+      hideAttribution={hideAttribution}
     >
       <ReleaseDetail
         projectName={projectName}
@@ -211,7 +219,7 @@ pub.get('/embed', async (c) => {
   const cached = await getCachedResponse(c.req.raw);
   if (cached) return cached;
 
-  const { projectName, projectDescription, releases, standaloneEntries, faviconUrl, entryGrouping, theme, primaryColor, timezone, dateGrouping } =
+  const { projectName, projectDescription, releases, standaloneEntries, faviconUrl, entryGrouping, theme, primaryColor, timezone, dateGrouping, showTitle, showDescription } =
     await fetchChangelogData(c.env.DB);
 
   const response = await c.html(
@@ -224,6 +232,8 @@ pub.get('/embed', async (c) => {
         entryGrouping={entryGrouping}
         timezone={timezone}
         dateGrouping={dateGrouping}
+        showTitle={showTitle}
+        showDescription={showDescription}
       />
     </EmbedLayout>,
   );
