@@ -1,5 +1,6 @@
 import type { Bindings } from '../bindings';
 import { summarizeContent } from '../services/ai';
+import { publishEntry } from '../services/entries';
 import { purgePublicCache, purgeReleasePages } from '../services/cache';
 import { getReleaseVersionsForEntry } from '../services/releases';
 import { getSetting } from '../services/settings';
@@ -30,9 +31,10 @@ export async function handleQueue(
         'UPDATE entries SET ai_status = ? WHERE id = ?',
       ).bind('processing', entryId).run();
 
-      // Get the entry's current title/category and the AI model setting
+      // Get the entry's current title/category, the publish intent, and the
+      // AI model setting.
       const entry = await env.DB.prepare(
-        'SELECT title, category FROM entries WHERE id = ?',
+        'SELECT title, category, publish_on_ai_complete FROM entries WHERE id = ?',
       ).bind(entryId).first();
 
       const modelSetting = await env.DB.prepare(
@@ -81,6 +83,13 @@ export async function handleQueue(
       await env.DB.prepare(
         "UPDATE entries SET title = ?, content = ?, category = ?, ai_status = ?, updated_at = datetime('now') WHERE id = ?",
       ).bind(title, content, category, 'completed', entryId).run();
+
+      // Now that the rewrite has landed, honour a deferred auto-publish request.
+      // This is the only point where ingested/auto-publish entries go public, so
+      // the raw commit is never exposed before the AI rewrite.
+      if (entry.publish_on_ai_complete) {
+        await publishEntry(env.DB, entryId);
+      }
 
       // Purge cached public pages so the new content is visible. The queue has
       // no request to read a host from, so fall back to the origin cached from

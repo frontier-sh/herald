@@ -193,10 +193,13 @@ export async function publishEntry(
   db: D1Database,
   id: number,
 ): Promise<EntryWithSection | null> {
+  // Clearing publish_on_ai_complete keeps the flag from lingering after the
+  // intent it represents (publish-when-AI-done) has been satisfied.
   await db
     .prepare(
       `UPDATE entries SET status = 'published', published_at = datetime('now'),
-         entry_date = COALESCE(entry_date, datetime('now')), updated_at = datetime('now')
+         entry_date = COALESCE(entry_date, datetime('now')),
+         publish_on_ai_complete = 0, updated_at = datetime('now')
        WHERE id = ?`,
     )
     .bind(id)

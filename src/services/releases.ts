@@ -222,12 +222,25 @@ export async function publishRelease(
     .bind(id)
     .run();
 
-  // Also publish all associated entries
+  // Publish all associated entries — except any still pending/processing AI.
+  // Publishing those now would expose the raw commit before the rewrite lands,
+  // so instead flag them to publish the moment AI completes (see queue worker).
   await db
     .prepare(
       `UPDATE entries SET status = 'published', published_at = datetime('now'),
-         entry_date = COALESCE(entry_date, datetime('now')), updated_at = datetime('now')
-       WHERE id IN (SELECT entry_id FROM release_entries WHERE release_id = ?)`,
+         entry_date = COALESCE(entry_date, datetime('now')),
+         publish_on_ai_complete = 0, updated_at = datetime('now')
+       WHERE id IN (SELECT entry_id FROM release_entries WHERE release_id = ?)
+         AND (ai_status IS NULL OR ai_status NOT IN ('pending', 'processing'))`,
+    )
+    .bind(id)
+    .run();
+
+  await db
+    .prepare(
+      `UPDATE entries SET publish_on_ai_complete = 1
+       WHERE id IN (SELECT entry_id FROM release_entries WHERE release_id = ?)
+         AND ai_status IN ('pending', 'processing')`,
     )
     .bind(id)
     .run();

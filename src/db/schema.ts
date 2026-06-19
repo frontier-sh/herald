@@ -52,6 +52,10 @@ export interface Entry {
   commit_sha: string | null;
   ai_status: AiStatus;
   raw_content: string | null;
+  // When 1, the entry should be published automatically once AI finishes
+  // rewriting it. Lets auto-publish defer until the rewrite lands instead of
+  // exposing the raw commit first. Resolved by the queue worker.
+  publish_on_ai_complete: number;
 }
 
 export interface EntryWithSection extends Entry {

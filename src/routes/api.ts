@@ -84,14 +84,23 @@ api.post('/entries', async (c) => {
       commit_sha: body.commit_sha?.trim() || undefined,
     });
 
+    // Auto-publish entries received via the API when the setting is on — but
+    // never before AI has rewritten them (see below).
+    const wantPublish = (await getSetting(c.env.DB, 'auto_publish')) === 'true';
+
     // Check if AI processing is enabled and enqueue if so
     const aiEnabled = await getSetting(c.env.DB, 'ai_enabled');
     if (aiEnabled === 'true' && entry.content) {
+      // Defer publishing to the queue worker via publish_on_ai_complete so the
+      // raw commit isn't exposed before the AI rewrite lands.
       await c.env.DB.prepare(
-        'UPDATE entries SET raw_content = ?, ai_status = ? WHERE id = ?',
-      ).bind(entry.content, 'pending', entry.id).run();
+        'UPDATE entries SET raw_content = ?, ai_status = ?, publish_on_ai_complete = ? WHERE id = ?',
+      ).bind(entry.content, 'pending', wantPublish ? 1 : 0, entry.id).run();
 
       await enqueueAISummarization(c.env.CHANGELOG_QUEUE, entry.id, entry.content);
+    } else if (wantPublish) {
+      // No AI rewrite to wait on — publish the original content immediately.
+      await publishEntry(c.env.DB, entry.id);
     }
 
     return c.json(entry, 201);
@@ -396,8 +405,12 @@ api.post('/webhook', async (c) => {
       }
     }
 
-    // Check AI setting once for all entries in the batch
+    // Check AI/publish settings once for all entries in the batch. An entry
+    // should auto-publish when the setting is on, or when it's part of a release
+    // being published in this same request — but always after AI, never before.
     const aiEnabled = await getSetting(c.env.DB, 'ai_enabled');
+    const autoPublish = (await getSetting(c.env.DB, 'auto_publish')) === 'true';
+    const wantPublish = autoPublish || body.release?.publish === true;
 
     const created = [];
     for (const item of body.entries) {
@@ -422,11 +435,18 @@ api.post('/webhook', async (c) => {
 
       // Enqueue for AI processing if enabled
       if (aiEnabled === 'true' && entry.content) {
+        // Defer publishing to the queue worker via publish_on_ai_complete so the
+        // raw commit isn't exposed before the AI rewrite lands.
         await c.env.DB.prepare(
-          'UPDATE entries SET raw_content = ?, ai_status = ? WHERE id = ?',
-        ).bind(entry.content, 'pending', entry.id).run();
+          'UPDATE entries SET raw_content = ?, ai_status = ?, publish_on_ai_complete = ? WHERE id = ?',
+        ).bind(entry.content, 'pending', wantPublish ? 1 : 0, entry.id).run();
 
         await enqueueAISummarization(c.env.CHANGELOG_QUEUE, entry.id, entry.content);
+      } else if (wantPublish) {
+        // No AI rewrite to wait on — publish the original content immediately.
+        // (The release.publish cascade below would also catch these, but doing
+        // it here keeps non-release auto-publish working too.)
+        await publishEntry(c.env.DB, entry.id);
       }
 
       created.push(entry);
