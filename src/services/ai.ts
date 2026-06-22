@@ -54,8 +54,16 @@ export async function summarizeContent(
   category?: string,
   model?: string,
   personality?: string,
+  projectName?: string,
+  projectDescription?: string,
 ): Promise<SummarizedEntry> {
-  const request = buildSummarizationRequest({ content, category, personality });
+  const request = buildSummarizationRequest({
+    content,
+    category,
+    personality,
+    projectName,
+    projectDescription,
+  });
   const modelId = resolveModelId(model);
 
   // JSON mode constrains the model to valid {title, body}; reasoning is disabled
