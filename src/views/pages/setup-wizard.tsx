@@ -1,5 +1,6 @@
 import type { FC } from 'hono/jsx';
 import { ClientHead } from '../components/client-assets';
+import { DEFAULT_FAVICON } from '../components/default-favicon';
 
 interface ShellProps {
   title: string;
@@ -22,6 +23,7 @@ const Shell: FC<ShellProps> = ({ title, children }) => (
         href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,200..800&family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=JetBrains+Mono:wght@400;500;600&display=swap"
         rel="stylesheet"
       />
+      <link rel="icon" href={DEFAULT_FAVICON} />
       <ClientHead />
     </head>
     <body class="login-body">

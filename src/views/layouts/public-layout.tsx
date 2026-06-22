@@ -1,5 +1,6 @@
 import type { FC } from 'hono/jsx';
 import { ClientHead, ClientBody } from '../components/client-assets';
+import { DEFAULT_FAVICON } from '../components/default-favicon';
 
 interface PublicLayoutProps {
   children: any;
@@ -52,7 +53,7 @@ export const PublicLayout: FC<PublicLayoutProps> = ({
           rel="stylesheet"
         />
         <link rel="alternate" type="application/rss+xml" title={`${displayName} RSS Feed`} href="/feed.xml" />
-        {faviconUrl && <link rel="icon" href={faviconUrl} />}
+        <link rel="icon" href={faviconUrl || DEFAULT_FAVICON} />
         <ClientHead />
       </head>
       <body
