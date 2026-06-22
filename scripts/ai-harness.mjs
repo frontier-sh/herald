@@ -49,12 +49,22 @@ const c = {
 
 // ── args ──────────────────────────────────────────────────
 function parseArgs(argv) {
-  const opts = { n: 10, files: [], model: undefined, category: null, personality: 'neutral' };
+  const opts = {
+    n: 10,
+    files: [],
+    model: undefined,
+    category: null,
+    personality: 'neutral',
+    projectName: undefined,
+    projectDescription: undefined,
+  };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--model') opts.model = argv[++i];
     else if (a === '--category') opts.category = argv[++i];
     else if (a === '--personality') opts.personality = argv[++i];
+    else if (a === '--project-name') opts.projectName = argv[++i];
+    else if (a === '--project-description') opts.projectDescription = argv[++i];
     else if (a === '--files') {
       while (i + 1 < argv.length && !argv[i + 1].startsWith('--')) opts.files.push(argv[++i]);
     } else if (/^\d+$/.test(a)) opts.n = Number(a);
@@ -165,6 +175,8 @@ async function main() {
       content: commit.message,
       category: hint,
       personality: opts.personality,
+      projectName: opts.projectName,
+      projectDescription: opts.projectDescription,
     });
 
     process.stdout.write(c.dim(`→ ${commit.sha}  `));

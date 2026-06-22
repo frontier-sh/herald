@@ -125,6 +125,34 @@ test('prompt omits the suggested-category hint when no category is provided', ()
   assert.match(system, /Choose the single category/i);
 });
 
+test('prompt includes product name and description as background context', () => {
+  const { system } = buildSummarizationPrompt({
+    content: 'feat: add CSV export to reports',
+    projectName: 'Acme Analytics',
+    projectDescription: 'A dashboard for tracking sales metrics.',
+  });
+  assert.match(system, /Product context/);
+  assert.match(system, /Product name: Acme Analytics/);
+  assert.match(system, /What it does: A dashboard for tracking sales metrics\./);
+});
+
+test('prompt omits the product context block when neither name nor description is set', () => {
+  const { system } = buildSummarizationPrompt({
+    content: 'feat: add CSV export to reports',
+  });
+  assert.ok(!/Product context/.test(system), 'no context block when product details are absent');
+});
+
+test('prompt includes only the product name when description is blank', () => {
+  const { system } = buildSummarizationPrompt({
+    content: 'feat: add CSV export to reports',
+    projectName: 'Acme Analytics',
+    projectDescription: '   ',
+  });
+  assert.match(system, /Product name: Acme Analytics/);
+  assert.ok(!/What it does:/.test(system), 'no description line when description is blank');
+});
+
 test('parses a valid category from a clean object', () => {
   const r = parseSummary('{"title": "Faster search", "category": "fixed", "body": "Search is snappier."}');
   assert.equal(r.category, 'fixed');

@@ -71,6 +71,8 @@ export function buildSummarizationPrompt(opts: {
   content: string;
   category?: string;
   personality?: string;
+  projectName?: string;
+  projectDescription?: string;
 }): PromptParts {
   const toneInstruction =
     PERSONALITY_INSTRUCTIONS[opts.personality || 'neutral'] || PERSONALITY_INSTRUCTIONS.neutral;
@@ -79,8 +81,21 @@ export function buildSummarizationPrompt(opts: {
   const hint = normalizeCategory(opts.category);
   const hintLine = hint ? `\nSuggested category (you may override): ${hint}` : '';
 
+  // Background on the product so the model frames changes in the right domain
+  // and uses the product's own name/terminology instead of generic phrasing.
+  // Both fields are optional; omit the block entirely when neither is set.
+  const name = opts.projectName?.trim();
+  const description = opts.projectDescription?.trim();
+  const contextLines = [
+    name ? `- Product name: ${name}` : '',
+    description ? `- What it does: ${description}` : '',
+  ].filter(Boolean);
+  const contextBlock = contextLines.length
+    ? `\n\nProduct context (background only — don't restate it in the entry):\n${contextLines.join('\n')}`
+    : '';
+
   const system = `You are writing a public changelog for the end users of a software product.
-Your readers are customers, not engineers — most have never seen the code. Turn the raw commit messages or notes below into a single short, friendly changelog entry that tells users what changed and why it helps them.
+Your readers are customers, not engineers — most have never seen the code. Turn the raw commit messages or notes below into a single short, friendly changelog entry that tells users what changed and why it helps them.${contextBlock}
 
 Tone: ${toneInstruction}${hintLine}
 
@@ -166,6 +181,8 @@ export function buildSummarizationRequest(opts: {
   content: string;
   category?: string;
   personality?: string;
+  projectName?: string;
+  projectDescription?: string;
 }) {
   const { system, user } = buildSummarizationPrompt(opts);
   return {

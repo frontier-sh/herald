@@ -50,6 +50,11 @@ export async function handleQueue(
         continue;
       }
 
+      // Product name/description give the model domain context so it frames
+      // changes correctly and uses the product's own terminology.
+      const projectName = await getSetting(env.DB, 'project_name');
+      const projectDescription = await getSetting(env.DB, 'project_description');
+
       // Run AI summarization (rewrites both the title and the body)
       const summary = await summarizeContent(
         env.AI,
@@ -57,6 +62,8 @@ export async function handleQueue(
         entry.category as string,
         modelSetting?.value as string,
         (personalitySetting?.value as string) || 'neutral',
+        projectName ?? undefined,
+        projectDescription ?? undefined,
       );
 
       // If the AI produced no usable body, do NOT silently write the raw commit

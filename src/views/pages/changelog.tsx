@@ -267,15 +267,18 @@ export const Changelog: FC<ChangelogProps> = ({
   const allCategories = collectCategories(releases, standaloneEntries);
   const useSection = entryGrouping === 'section';
   const buckets = buildDateBuckets(releases, standaloneEntries, timezone, dateGrouping);
+  const showHeroTitle = showTitle && !!projectName;
+  const showHeroDescription = showDescription && !!projectDescription;
+  const heroHasContent = showHeroTitle || showHeroDescription;
 
   return (
     <div class="changelog">
-      <div class="changelog-hero">
-        <h1 class="changelog-title" style={showTitle ? undefined : 'display: none;'}>{projectName}</h1>
-        {projectDescription && (
-          <p class="changelog-subtitle" style={showDescription ? undefined : 'display: none;'}>{projectDescription}</p>
-        )}
-      </div>
+      {heroHasContent && (
+        <div class="changelog-hero">
+          {showHeroTitle && <h1 class="changelog-title">{projectName}</h1>}
+          {showHeroDescription && <p class="changelog-subtitle">{projectDescription}</p>}
+        </div>
+      )}
 
       {hasContent && !useSection && allCategories.length > 0 && (
         <div class="category-filters" id="category-filters">
