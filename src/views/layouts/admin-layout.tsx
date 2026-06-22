@@ -2,6 +2,7 @@ import type { FC } from 'hono/jsx';
 import { Sidebar } from '../components/sidebar';
 import { FlashMessageBanner } from '../components/flash-message';
 import { ClientHead, ClientBody } from '../components/client-assets';
+import { DEFAULT_FAVICON } from '../components/default-favicon';
 import type { FlashMessage } from '../../middleware/flash';
 
 interface AdminLayoutProps {
@@ -48,7 +49,7 @@ export const AdminLayout: FC<AdminLayoutProps> = ({
           rel="stylesheet"
           href="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.css"
         />
-        {faviconUrl && <link rel="icon" href={faviconUrl} />}
+        <link rel="icon" href={faviconUrl || DEFAULT_FAVICON} />
         <ClientHead />
       </head>
       <body>
