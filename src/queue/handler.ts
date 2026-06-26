@@ -4,6 +4,7 @@ import { publishEntry } from '../services/entries';
 import { purgePublicCache, purgeReleasePages } from '../services/cache';
 import { getReleaseVersionsForEntry } from '../services/releases';
 import { getSetting } from '../services/settings';
+import { notifyEntryPublished, notifyPendingReleasesForEntry } from '../services/slack';
 import { BASE_URL_SETTING } from '../middleware/base-url';
 
 interface QueueMessage {
@@ -11,6 +12,9 @@ interface QueueMessage {
   entryId: number;
   rawContent: string;
   timestamp: number;
+  // When set, this entry is part of a release whose consolidated message has
+  // already been sent — skip the per-entry Slack notification to avoid a double.
+  suppressEntryNotify?: boolean;
 }
 
 export async function handleQueue(
@@ -18,7 +22,7 @@ export async function handleQueue(
   env: Bindings,
 ): Promise<void> {
   for (const message of batch.messages) {
-    const { type, entryId, rawContent } = message.body;
+    const { type, entryId, rawContent, suppressEntryNotify } = message.body;
 
     if (type !== 'summarize') {
       message.ack();
@@ -75,6 +79,9 @@ export async function handleQueue(
         await env.DB.prepare(
           'UPDATE entries SET ai_status = ? WHERE id = ?',
         ).bind('failed', entryId).run();
+        // A failed rewrite is terminal too — unblock any release notification
+        // that was waiting on this entry so it isn't stuck pending forever.
+        await notifyPendingReleasesForEntry(env, entryId);
         message.ack();
         continue;
       }
@@ -96,7 +103,19 @@ export async function handleQueue(
       // the raw commit is never exposed before the AI rewrite.
       if (entry.publish_on_ai_complete) {
         await publishEntry(env.DB, entryId);
+        // Notify Slack now that this entry is genuinely public. notify* never
+        // throws, so a Slack hiccup can't fail the job or trigger a retry that
+        // re-runs the AI rewrite. Skip when a consolidated release message
+        // already covers this entry, to avoid a duplicate notification.
+        if (!suppressEntryNotify) {
+          await notifyEntryPublished(env, entryId);
+        }
       }
+
+      // This entry's rewrite has landed — if it was the last one a published
+      // release was waiting on, send that release's consolidated message now
+      // (with post-AI titles). No-op when no release is waiting on it.
+      await notifyPendingReleasesForEntry(env, entryId);
 
       // Purge cached public pages so the new content is visible. The queue has
       // no request to read a host from, so fall back to the origin cached from

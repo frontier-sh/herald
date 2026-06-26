@@ -22,6 +22,9 @@ interface SummarizeMessage {
   entryId: number;
   rawContent: string;
   timestamp: number;
+  // Set when this entry will be covered by a consolidated release notification,
+  // so the queue worker skips the per-entry Slack message and avoids a duplicate.
+  suppressEntryNotify?: boolean;
 }
 
 /**
@@ -31,12 +34,14 @@ export async function enqueueAISummarization(
   queue: Queue,
   entryId: number,
   rawContent: string,
+  suppressEntryNotify = false,
 ): Promise<void> {
   await queue.send({
     type: 'summarize',
     entryId,
     rawContent,
     timestamp: Date.now(),
+    suppressEntryNotify,
   } satisfies SummarizeMessage);
 }
 

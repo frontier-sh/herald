@@ -21,6 +21,7 @@ import {
   getReleaseVersionsForEntry,
 } from '../services/releases';
 import { getAllSettings, getSetting, setSetting } from '../services/settings';
+import { notifyEntryPublished, notifyReleasePublishedWhenReady } from '../services/slack';
 import {
   createApiKey,
   listApiKeys,
@@ -101,6 +102,7 @@ api.post('/entries', async (c) => {
     } else if (wantPublish) {
       // No AI rewrite to wait on — publish the original content immediately.
       await publishEntry(c.env.DB, entry.id);
+      c.executionCtx.waitUntil(notifyEntryPublished(c.env, entry.id));
     }
 
     return c.json(entry, 201);
@@ -300,8 +302,12 @@ api.post('/releases/:id/publish', async (c) => {
     const id = parseInt(c.req.param('id'), 10);
     if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
 
+    const before = await getRelease(c.env.DB, id);
     const release = await publishRelease(c.env.DB, id);
     if (!release) return c.json({ error: 'Release not found' }, 404);
+    if (before && before.status !== 'published') {
+      c.executionCtx.waitUntil(notifyReleasePublishedWhenReady(c.env, id));
+    }
 
     return c.json(release);
   } catch (err) {
@@ -412,6 +418,18 @@ api.post('/webhook', async (c) => {
     const autoPublish = (await getSetting(c.env.DB, 'auto_publish')) === 'true';
     const wantPublish = autoPublish || body.release?.publish === true;
 
+    // Determine up front whether a single consolidated release message will be
+    // sent for this batch, so per-entry notifications (here and in the AI queue
+    // worker) can be suppressed to avoid double-notifying. It fires only on a
+    // draft→published transition; an already-published release sends no
+    // consolidated message, so its entries fall back to per-entry notifications.
+    const existingRelease = body.release?.version
+      ? await getReleaseByVersion(c.env.DB, body.release.version)
+      : null;
+    const releaseWillNotify =
+      body.release?.publish === true &&
+      (!existingRelease || existingRelease.status !== 'published');
+
     const created = [];
     for (const item of body.entries) {
       if (!item.title) {
@@ -441,12 +459,22 @@ api.post('/webhook', async (c) => {
           'UPDATE entries SET raw_content = ?, ai_status = ?, publish_on_ai_complete = ? WHERE id = ?',
         ).bind(entry.content, 'pending', wantPublish ? 1 : 0, entry.id).run();
 
-        await enqueueAISummarization(c.env.CHANGELOG_QUEUE, entry.id, entry.content);
+        await enqueueAISummarization(
+          c.env.CHANGELOG_QUEUE,
+          entry.id,
+          entry.content,
+          releaseWillNotify,
+        );
       } else if (wantPublish) {
         // No AI rewrite to wait on — publish the original content immediately.
         // (The release.publish cascade below would also catch these, but doing
         // it here keeps non-release auto-publish working too.)
         await publishEntry(c.env.DB, entry.id);
+        // Notify per-entry unless a consolidated release message will cover this
+        // batch, in which case that single message replaces the per-entry ones.
+        if (!releaseWillNotify) {
+          c.executionCtx.waitUntil(notifyEntryPublished(c.env, entry.id));
+        }
       }
 
       created.push(entry);
@@ -455,7 +483,9 @@ api.post('/webhook', async (c) => {
     let releaseResponse = null;
     if (body.release?.version) {
       const version = body.release.version;
-      let release = await getReleaseByVersion(c.env.DB, version);
+      // Reuse the status snapshot taken before the entry loop; releaseWillNotify
+      // was derived from it, so the publish-time check below stays consistent.
+      let release = existingRelease;
       if (!release) {
         release = await createRelease(c.env.DB, {
           version,
@@ -479,7 +509,15 @@ api.post('/webhook', async (c) => {
       );
 
       if (body.release.publish) {
+        // `release.status` reflects state before this publish — only the
+        // draft→published transition should fire the consolidated message. When
+        // entries are still being AI-rewritten this defers until they land, so
+        // the message carries post-AI titles (the queue worker sends it then).
+        const wasPublished = release.status === 'published';
         await publishRelease(c.env.DB, release.id);
+        if (!wasPublished) {
+          c.executionCtx.waitUntil(notifyReleasePublishedWhenReady(c.env, release.id));
+        }
       }
 
       releaseResponse = await getRelease(c.env.DB, release.id);

@@ -73,6 +73,10 @@ export interface Release {
   release_date: string | null;
   created_at: string;
   updated_at: string;
+  // When 1, the release is published but its consolidated Slack notification is
+  // deferred until its entries finish AI rewriting (so titles are post-AI). The
+  // queue worker sends the message and clears this flag. See migration 0011.
+  publish_notify_pending: number;
 }
 
 export interface ReleaseEntry {
