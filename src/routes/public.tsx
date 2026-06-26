@@ -8,6 +8,7 @@ import { effectiveEntryDate, effectiveReleaseDate } from '../services/datetime';
 import { getCachedResponse, cacheResponse } from '../services/cache';
 import type { Release, EntryWithSection } from '../db/schema';
 
+import { DEFAULT_FAVICON } from '../views/components/default-favicon';
 import { PublicLayout } from '../views/layouts/public-layout';
 import { EmbedLayout } from '../views/layouts/embed-layout';
 import { Changelog } from '../views/pages/changelog';
@@ -67,6 +68,26 @@ export async function fetchChangelogData(db: D1Database) {
 }
 
 const pub = new Hono<{ Bindings: Bindings }>();
+
+// ─── Herald default icon ───────────────────────────────
+
+// Serve Herald's built-in default icon as a real, publicly-fetchable PNG. The
+// in-app favicon is a data: URI (great for inlining in HTML), but external
+// services like Slack need a URL they can fetch server-side — so we expose the
+// same bytes here for the notification-branding fallback when no custom favicon
+// has been uploaded.
+pub.get('/herald-icon.png', (c) => {
+  const base64 = DEFAULT_FAVICON.split(',')[1] ?? '';
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new Response(bytes, {
+    headers: {
+      'Content-Type': 'image/png',
+      'Cache-Control': 'public, max-age=31536000, immutable',
+    },
+  });
+});
 
 // ─── Image Serving ─────────────────────────────────────
 

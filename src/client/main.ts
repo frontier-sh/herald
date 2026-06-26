@@ -23,6 +23,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initThemePicker();
   initPrimaryColor();
   initVisibilityToggles();
+  initSlackSettings();
   initGenerateMode();
   initGenerateSelectAll();
   initLocalDates();
@@ -1097,4 +1098,57 @@ function initVisibilityToggles(): void {
       });
     });
   });
+}
+
+/**
+ * Slack settings: send a test message against the currently-entered webhook URL
+ * (inline feedback, no reload), and the enable/pause toggle (background save).
+ */
+function initSlackSettings(): void {
+  const form = document.querySelector<HTMLFormElement>('[data-slack-form]');
+
+  const testBtn = document.querySelector<HTMLButtonElement>('[data-slack-test]');
+  const result = document.querySelector<HTMLElement>('[data-slack-test-result]');
+  if (form && testBtn && result) {
+    const input = form.querySelector<HTMLInputElement>('input[name="slack_webhook_url"]');
+    testBtn.addEventListener('click', async () => {
+      const url = (input?.value || '').trim();
+      if (!url) {
+        result.hidden = false;
+        result.textContent = 'Enter a webhook URL first.';
+        return;
+      }
+      testBtn.setAttribute('disabled', 'true');
+      const original = testBtn.textContent;
+      testBtn.textContent = 'Sending…';
+      result.hidden = false;
+      result.textContent = 'Sending test message…';
+      try {
+        const formData = new FormData();
+        formData.append('slack_webhook_url', url);
+        const res = await fetch('/admin/settings/slack/test', {
+          method: 'POST',
+          body: formData,
+        });
+        const data = (await res.json()) as { ok: boolean; error?: string };
+        result.textContent = data.ok
+          ? '✅ Sent — check your Slack channel.'
+          : `❌ ${data.error || 'Failed to send.'}`;
+      } catch {
+        result.textContent = '❌ Failed to reach the server.';
+      } finally {
+        testBtn.removeAttribute('disabled');
+        testBtn.textContent = original;
+      }
+    });
+  }
+
+  const toggle = document.querySelector<HTMLInputElement>('[data-slack-toggle]');
+  if (toggle) {
+    toggle.addEventListener('change', () => {
+      const formData = new FormData();
+      formData.append('slack_notifications_enabled', toggle.checked ? 'true' : 'false');
+      fetch('/admin/settings/slack/toggle', { method: 'POST', body: formData });
+    });
+  }
 }

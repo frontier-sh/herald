@@ -247,3 +247,63 @@ export async function publishRelease(
 
   return getRelease(db, id);
 }
+
+// ─── Deferred publish-notification coordination ─────────
+//
+// A release's consolidated Slack message must carry post-AI titles, so when its
+// entries are still being rewritten we defer the message: the release is flagged
+// `publish_notify_pending`, and whichever party finishes the last entry sends it.
+// The flag is also the de-dup lock — the atomic claim below guarantees exactly
+// one send across concurrent queue workers and the publishing request.
+
+/** Flag a published release as awaiting its consolidated notification. */
+export async function markReleaseNotifyPending(db: D1Database, id: number): Promise<void> {
+  await db
+    .prepare('UPDATE releases SET publish_notify_pending = 1 WHERE id = ?')
+    .bind(id)
+    .run();
+}
+
+/**
+ * If the release is awaiting its consolidated notification and none of its
+ * entries are still being AI-processed, atomically claim it (clearing the flag)
+ * so the caller — and only the caller — sends the message. Returns false when
+ * the release isn't ready or another party already claimed it.
+ */
+export async function claimReleaseNotificationIfReady(
+  db: D1Database,
+  id: number,
+): Promise<boolean> {
+  const pending = await db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM release_entries re
+       INNER JOIN entries e ON e.id = re.entry_id
+       WHERE re.release_id = ? AND e.ai_status IN ('pending', 'processing')`,
+    )
+    .bind(id)
+    .first<{ n: number }>();
+  if ((pending?.n ?? 0) > 0) return false;
+
+  // Atomic claim: only the statement that actually flips the flag may send.
+  const res = await db
+    .prepare('UPDATE releases SET publish_notify_pending = 0 WHERE id = ? AND publish_notify_pending = 1')
+    .bind(id)
+    .run();
+  return (res.meta.changes ?? 0) > 0;
+}
+
+/** Releases that contain this entry and are awaiting their consolidated notification. */
+export async function releaseIdsAwaitingNotifyForEntry(
+  db: D1Database,
+  entryId: number,
+): Promise<number[]> {
+  const rows = await db
+    .prepare(
+      `SELECT r.id AS id FROM releases r
+       INNER JOIN release_entries re ON re.release_id = r.id
+       WHERE re.entry_id = ? AND r.publish_notify_pending = 1`,
+    )
+    .bind(entryId)
+    .all<{ id: number }>();
+  return rows.results.map((r) => r.id);
+}

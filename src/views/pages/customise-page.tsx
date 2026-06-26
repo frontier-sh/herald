@@ -78,6 +78,11 @@ export const CustomisePage: FC<CustomisePageProps> = ({
   const hideAttribution = settings['hide_attribution'] === 'true';
   const timezones = listTimezones();
 
+  const slackWebhook = settings['slack_webhook_url'] ?? '';
+  const slackConnected = slackWebhook !== '';
+  // Absence of the flag means "on" — saving a URL enables notifications.
+  const slackEnabled = settings['slack_notifications_enabled'] !== 'false';
+
   const changelogUrl = baseUrl;
   const embedCode = `<script src="${baseUrl}/embed.js"></script>`;
   const embedCodeWithDiv = `<div data-herald-widget></div>\n<script src="${baseUrl}/embed.js"></script>`;
@@ -458,6 +463,80 @@ export const CustomisePage: FC<CustomisePageProps> = ({
             <button type="button" class="btn btn-secondary btn-sm" data-copy-target="rss-url">Copy</button>
           </div>
         </div>
+      </SettingsSection>
+
+      {/* Slack Section */}
+      <SettingsSection
+        title="Slack"
+        description="Post a message to a Slack channel whenever an update is published."
+      >
+        <form method="post" action="/admin/settings/slack" data-slack-form>
+          <div class="form-group">
+            <label for="slack_webhook_url" class="form-label">
+              Webhook URL
+            </label>
+            <p class="form-hint">
+              In Slack, create an app, enable <strong>Incoming Webhooks</strong>, click{' '}
+              <strong>Add New Webhook to Workspace</strong>, choose a channel, then paste the
+              URL here.{' '}
+              <a
+                href="https://docs.slack.dev/messaging/sending-messages-using-incoming-webhooks"
+                target="_blank"
+                rel="noreferrer noopener"
+              >
+                Step-by-step guide ↗
+              </a>
+            </p>
+            <input
+              type="text"
+              id="slack_webhook_url"
+              name="slack_webhook_url"
+              class="form-input"
+              placeholder="https://hooks.slack.com/services/..."
+              value={slackWebhook}
+              autocomplete="off"
+              spellcheck={false}
+            />
+            <p class="form-hint">
+              Slack shows your app's name and icon as the sender, so name the app after your
+              product and use your favicon as its icon. Your product name and favicon are also
+              included inside every message.
+            </p>
+          </div>
+          <div class="settings-section-footer">
+            <button type="submit" class="btn btn-primary">
+              {slackConnected ? 'Save' : 'Connect'}
+            </button>
+            <button type="button" class="btn btn-secondary" data-slack-test>
+              Send test message
+            </button>
+            <span class="form-hint" data-slack-test-result hidden></span>
+          </div>
+        </form>
+
+        {slackConnected && (
+          <div class="settings-toggle-row">
+            <div class="settings-toggle-info">
+              <span class="settings-toggle-label">Send notifications</span>
+              <span class="settings-toggle-hint">
+                Pause without removing your webhook URL.
+              </span>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" checked={slackEnabled} data-slack-toggle />
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        )}
+
+        {slackConnected && (
+          <form method="post" action="/admin/settings/slack" class="settings-section-footer">
+            <input type="hidden" name="slack_webhook_url" value="" />
+            <button type="submit" class="btn btn-secondary">
+              Disconnect
+            </button>
+          </form>
+        )}
       </SettingsSection>
     </div>
   );

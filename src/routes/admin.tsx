@@ -22,6 +22,16 @@ import {
   getReleaseVersionsForEntry,
 } from '../services/releases';
 import { getAllSettings, getSetting, setSetting, deleteSetting } from '../services/settings';
+import {
+  isValidSlackWebhookUrl,
+  notifyEntryPublished,
+  notifyReleasePublishedWhenReady,
+  sendSlackMessage,
+  buildEntryMessage,
+  resolveBranding,
+  SLACK_WEBHOOK_SETTING,
+  SLACK_ENABLED_SETTING,
+} from '../services/slack';
 import { createApiKey, listApiKeys, deleteApiKey } from '../services/api-keys';
 import { enqueueAISummarization, extractAIText } from '../services/ai';
 import { resolveModelId } from '../services/models';
@@ -227,6 +237,8 @@ admin.post('/entries', async (c) => {
     // If publish was requested, publish immediately
     if (status === 'published') {
       await publishEntry(c.env.DB, entry.id);
+      // Brand-new entry going straight to published — always a real transition.
+      c.executionCtx.waitUntil(notifyEntryPublished(c.env, entry.id));
     }
 
     // Check if AI processing is enabled and enqueue if so
@@ -299,6 +311,10 @@ admin.post('/entries/:id', async (c) => {
   }
 
   try {
+    // Capture the prior status so we only notify Slack on a genuine
+    // draft→published transition, not on every re-save of a published entry.
+    const before = await getEntry(c.env.DB, id);
+
     let sectionId: number | null = null;
     if (sectionName) {
       const section = await getOrCreateSection(c.env.DB, sectionName);
@@ -336,6 +352,10 @@ admin.post('/entries/:id', async (c) => {
     // If publish was requested and it was a draft, set published_at too
     if (status === 'published') {
       await publishEntry(c.env.DB, id);
+      // Notify only when this actually flipped a non-published entry public.
+      if (before && before.status !== 'published') {
+        c.executionCtx.waitUntil(notifyEntryPublished(c.env, id));
+      }
     }
 
     const versions = await getReleaseVersionsForEntry(c.env.DB, id);
@@ -709,6 +729,8 @@ admin.post('/releases', async (c) => {
     // If publish was requested, publish immediately
     if (status === 'published') {
       await publishRelease(c.env.DB, release.id);
+      // New release going straight to published — send the consolidated message.
+      c.executionCtx.waitUntil(notifyReleasePublishedWhenReady(c.env, release.id));
     }
 
     const url = new URL(c.req.url);
@@ -820,6 +842,10 @@ admin.post('/releases/:id', async (c) => {
     // If publish was requested, publish the release
     if (status === 'published') {
       await publishRelease(c.env.DB, id);
+      // Notify only when this flipped a non-published release public.
+      if (previous && previous.status !== 'published') {
+        c.executionCtx.waitUntil(notifyReleasePublishedWhenReady(c.env, id));
+      }
     }
 
     const url = new URL(c.req.url);
@@ -884,10 +910,15 @@ admin.post('/releases/:id/publish', async (c) => {
   }
 
   try {
+    // Capture prior status so re-clicking Publish doesn't re-notify Slack.
+    const before = await getRelease(c.env.DB, id);
     const release = await publishRelease(c.env.DB, id);
     if (!release) {
       setFlash(c, 'error', 'Release not found.');
       return c.redirect('/admin/releases');
+    }
+    if (before && before.status !== 'published') {
+      c.executionCtx.waitUntil(notifyReleasePublishedWhenReady(c.env, id));
     }
     const url = new URL(c.req.url);
     const baseUrl = c.env.BASE_URL || `${url.protocol}//${url.host}`;
@@ -925,6 +956,7 @@ admin.get('/customise', async (c) => {
     release_date: new Date().toISOString(),
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
+    publish_notify_pending: 0,
     entries: [
       { id: 1, title: 'Dark mode support', content: 'Added full dark mode with system preference detection.', category: 'added' as const, section_id: null, section_name: null, status: 'published' as const, published_at: new Date().toISOString(), entry_date: new Date().toISOString(), created_at: new Date().toISOString(), updated_at: new Date().toISOString(), source: 'manual' as const, source_metadata: null, commit_sha: null, ai_status: null, raw_content: null , publish_on_ai_complete: 0 },
       { id: 2, title: 'Login page not loading on mobile devices', content: 'Resolved an issue where the login form failed to render on iOS Safari.', category: 'fixed' as const, section_id: null, section_name: null, status: 'published' as const, published_at: new Date().toISOString(), entry_date: new Date().toISOString(), created_at: new Date().toISOString(), updated_at: new Date().toISOString(), source: 'manual' as const, source_metadata: null, commit_sha: null, ai_status: null, raw_content: null , publish_on_ai_complete: 0 },
@@ -1026,6 +1058,73 @@ admin.post('/settings/general', async (c) => {
   }
 
   return c.redirect('/admin/customise');
+});
+
+// ─── Settings: Slack ────────────────────────────────────
+
+admin.post('/settings/slack', async (c) => {
+  const body = await c.req.parseBody();
+  const webhookUrl = ((body['slack_webhook_url'] as string) || '').trim();
+
+  try {
+    if (webhookUrl === '') {
+      // Empty submission disconnects the integration.
+      await deleteSetting(c.env.DB, SLACK_WEBHOOK_SETTING);
+      await deleteSetting(c.env.DB, SLACK_ENABLED_SETTING);
+      setFlash(c, 'success', 'Slack disconnected.');
+    } else if (!isValidSlackWebhookUrl(webhookUrl)) {
+      setFlash(
+        c,
+        'error',
+        'That doesn’t look like a Slack webhook URL (it should start with https://hooks.slack.com/).',
+      );
+    } else {
+      await setSetting(c.env.DB, SLACK_WEBHOOK_SETTING, webhookUrl);
+      // Saving a URL (re)enables notifications.
+      await setSetting(c.env.DB, SLACK_ENABLED_SETTING, 'true');
+      setFlash(c, 'success', 'Slack connected. Published updates will post to your channel.');
+    }
+  } catch (err) {
+    setFlash(c, 'error', 'Failed to save Slack settings.');
+  }
+
+  return c.redirect('/admin/customise');
+});
+
+// Pause/resume without losing the saved webhook URL (toggle switch, async save).
+admin.post('/settings/slack/toggle', async (c) => {
+  const body = await c.req.parseBody();
+  const enabled = body['slack_notifications_enabled'] === 'true';
+  try {
+    await setSetting(c.env.DB, SLACK_ENABLED_SETTING, enabled ? 'true' : 'false');
+    return c.json({ ok: true });
+  } catch (err) {
+    return c.json({ ok: false, error: 'Failed to update Slack setting.' }, 500);
+  }
+});
+
+// Send a sample branded message so users can confirm the webhook works during
+// setup. Uses the just-entered URL when provided, else the saved one.
+admin.post('/settings/slack/test', async (c) => {
+  const body = await c.req.parseBody();
+  const entered = ((body['slack_webhook_url'] as string) || '').trim();
+  const webhookUrl = entered || (await getSetting(c.env.DB, SLACK_WEBHOOK_SETTING)) || '';
+
+  if (!isValidSlackWebhookUrl(webhookUrl)) {
+    return c.json({ ok: false, error: 'Enter a valid Slack webhook URL first.' }, 400);
+  }
+
+  const branding = await resolveBranding(c.env);
+  const message = buildEntryMessage(
+    {
+      title: 'Test notification',
+      content: `This is a test message from ${branding.projectName}. Your Slack integration is working — new changelog updates will appear here.`,
+      category: 'added',
+    },
+    branding,
+  );
+  const result = await sendSlackMessage(webhookUrl, message);
+  return c.json(result, result.ok ? 200 : 502);
 });
 
 // ─── Settings: Display ──────────────────────────────────
