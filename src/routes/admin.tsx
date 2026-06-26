@@ -1088,7 +1088,7 @@ admin.post('/settings/slack', async (c) => {
     setFlash(c, 'error', 'Failed to save Slack settings.');
   }
 
-  return c.redirect('/admin/customise');
+  return c.redirect('/admin/settings');
 });
 
 // Pause/resume without losing the saved webhook URL (toggle switch, async save).

@@ -1101,54 +1101,153 @@ function initVisibilityToggles(): void {
 }
 
 /**
- * Slack settings: send a test message against the currently-entered webhook URL
- * (inline feedback, no reload), and the enable/pause toggle (background save).
+ * Slack settings (Settings page): the guided "Connect Slack" slideshow modal,
+ * the test-message button (modal + connected row), the pause toggle, and a
+ * disconnect confirmation. Each piece is independent and no-ops when its markup
+ * isn't on the page.
  */
 function initSlackSettings(): void {
-  const form = document.querySelector<HTMLFormElement>('[data-slack-form]');
+  initSlackModal();
+  initSlackTestButtons();
+  initSlackToggle();
+  initSlackDisconnect();
+}
 
-  const testBtn = document.querySelector<HTMLButtonElement>('[data-slack-test]');
-  const result = document.querySelector<HTMLElement>('[data-slack-test-result]');
-  if (form && testBtn && result) {
-    const input = form.querySelector<HTMLInputElement>('input[name="slack_webhook_url"]');
+/** Open/close the setup modal and drive the step-by-step slideshow. */
+function initSlackModal(): void {
+  const modal = document.querySelector<HTMLElement>('[data-slack-modal]');
+  const openBtn = document.querySelector<HTMLButtonElement>('[data-slack-connect]');
+  if (!modal || !openBtn) return;
+
+  const steps = Array.from(modal.querySelectorAll<HTMLElement>('[data-slack-step]'));
+  const indicator = modal.querySelector<HTMLElement>('[data-slack-step-indicator]');
+  const backBtn = modal.querySelector<HTMLButtonElement>('[data-slack-back]');
+  const nextBtn = modal.querySelector<HTMLButtonElement>('[data-slack-next]');
+  const connectBtn = modal.querySelector<HTMLButtonElement>('[data-slack-connect-submit]');
+  const testBtn = modal.querySelector<HTMLButtonElement>('[data-slack-test]');
+  const last = steps.length - 1;
+  let current = 0;
+
+  const render = (): void => {
+    steps.forEach((step, i) => {
+      step.hidden = i !== current;
+    });
+    if (indicator) indicator.textContent = `Step ${current + 1} of ${steps.length}`;
+    if (backBtn) backBtn.hidden = current === 0;
+    const onLast = current === last;
+    if (nextBtn) nextBtn.hidden = onLast;
+    if (connectBtn) connectBtn.hidden = !onLast;
+    if (testBtn) testBtn.hidden = !onLast;
+  };
+
+  const open = (): void => {
+    current = 0;
+    render();
+    modal.hidden = false;
+    document.body.style.overflow = 'hidden';
+    // Focus the first interactive control in the step for keyboard users.
+    modal.querySelector<HTMLElement>('input, a, button')?.focus();
+  };
+
+  const close = (): void => {
+    modal.hidden = true;
+    document.body.style.overflow = '';
+    openBtn.focus();
+  };
+
+  openBtn.addEventListener('click', open);
+  nextBtn?.addEventListener('click', () => {
+    if (current < last) {
+      current += 1;
+      render();
+      modal.querySelector<HTMLElement>(`[data-slack-step="${current}"] input`)?.focus();
+    }
+  });
+  backBtn?.addEventListener('click', () => {
+    if (current > 0) {
+      current -= 1;
+      render();
+    }
+  });
+
+  modal.querySelectorAll<HTMLElement>('[data-slack-modal-close]').forEach((el) => {
+    el.addEventListener('click', close);
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !modal.hidden) close();
+  });
+}
+
+/**
+ * Send a test message. Works both inside the modal (tests the just-pasted URL)
+ * and on the connected row (no input — the server falls back to the saved URL).
+ */
+function initSlackTestButtons(): void {
+  const buttons = document.querySelectorAll<HTMLButtonElement>('[data-slack-test]');
+  buttons.forEach((testBtn) => {
+    const inModal = testBtn.closest<HTMLElement>('[data-slack-modal]');
+    const scope: Document | HTMLElement = inModal ?? document;
+    const input = scope.querySelector<HTMLInputElement>('[data-slack-webhook-input]');
+    const result = scope.querySelector<HTMLElement>('[data-slack-test-result]');
+
     testBtn.addEventListener('click', async () => {
       const url = (input?.value || '').trim();
-      if (!url) {
-        result.hidden = false;
-        result.textContent = 'Enter a webhook URL first.';
+      if (input && !url) {
+        if (result) {
+          result.hidden = false;
+          result.textContent = 'Paste your webhook URL first.';
+        }
+        input.focus();
         return;
       }
       testBtn.setAttribute('disabled', 'true');
       const original = testBtn.textContent;
       testBtn.textContent = 'Sending…';
-      result.hidden = false;
-      result.textContent = 'Sending test message…';
+      if (result) {
+        result.hidden = false;
+        result.textContent = 'Sending test message…';
+      }
       try {
         const formData = new FormData();
-        formData.append('slack_webhook_url', url);
+        if (url) formData.append('slack_webhook_url', url);
         const res = await fetch('/admin/settings/slack/test', {
           method: 'POST',
           body: formData,
         });
         const data = (await res.json()) as { ok: boolean; error?: string };
-        result.textContent = data.ok
-          ? '✅ Sent — check your Slack channel.'
-          : `❌ ${data.error || 'Failed to send.'}`;
+        if (result) {
+          result.textContent = data.ok
+            ? '✅ Sent — check your Slack channel.'
+            : `❌ ${data.error || 'Failed to send.'}`;
+        }
       } catch {
-        result.textContent = '❌ Failed to reach the server.';
+        if (result) result.textContent = '❌ Failed to reach the server.';
       } finally {
         testBtn.removeAttribute('disabled');
         testBtn.textContent = original;
       }
     });
-  }
+  });
+}
 
+/** Pause/resume notifications without losing the saved webhook URL. */
+function initSlackToggle(): void {
   const toggle = document.querySelector<HTMLInputElement>('[data-slack-toggle]');
-  if (toggle) {
-    toggle.addEventListener('change', () => {
-      const formData = new FormData();
-      formData.append('slack_notifications_enabled', toggle.checked ? 'true' : 'false');
-      fetch('/admin/settings/slack/toggle', { method: 'POST', body: formData });
-    });
-  }
+  if (!toggle) return;
+  toggle.addEventListener('change', () => {
+    const formData = new FormData();
+    formData.append('slack_notifications_enabled', toggle.checked ? 'true' : 'false');
+    fetch('/admin/settings/slack/toggle', { method: 'POST', body: formData });
+  });
+}
+
+/** Confirm before disconnecting (clears the saved webhook URL). */
+function initSlackDisconnect(): void {
+  const form = document.querySelector<HTMLFormElement>('[data-slack-disconnect]');
+  if (!form) return;
+  form.addEventListener('submit', (e) => {
+    if (!window.confirm('Disconnect Slack? Published updates will stop posting to your channel.')) {
+      e.preventDefault();
+    }
+  });
 }

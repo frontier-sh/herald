@@ -1,6 +1,7 @@
 import type { FC } from 'hono/jsx';
 import type { ApiKey } from '../../db/schema';
 import { SettingsSection } from '../components/settings-form';
+import { SlackSettings } from '../components/slack-settings';
 import { AI_MODELS, DEFAULT_AI_MODEL, resolveModelId } from '../../services/models';
 import { formatInZone } from '../../services/datetime';
 
@@ -25,6 +26,10 @@ export const SettingsPage: FC<SettingsPageProps> = ({
   const aiModel = resolveModelId(settings['ai_model']);
   const aiPersonality = settings['ai_personality'] || 'neutral';
   const timezone = settings['timezone'] || 'UTC';
+  const slackConnected = (settings['slack_webhook_url'] ?? '') !== '';
+  // Absence of the flag means "on" — saving a URL enables notifications.
+  const slackEnabled = settings['slack_notifications_enabled'] !== 'false';
+  const projectName = settings['project_name'] || '';
   const formatDate = (dateStr: string | null): string => {
     if (!dateStr) return 'Never';
     return formatInZone(dateStr, timezone, {
@@ -294,6 +299,18 @@ export const SettingsPage: FC<SettingsPageProps> = ({
             No API keys created yet. Create one to get started with the API.
           </p>
         )}
+      </SettingsSection>
+
+      {/* Slack Section */}
+      <SettingsSection
+        title="Slack"
+        description="Post a message to a Slack channel whenever an update is published."
+      >
+        <SlackSettings
+          connected={slackConnected}
+          enabled={slackEnabled}
+          projectName={projectName}
+        />
       </SettingsSection>
 
       {/* Danger Zone */}
