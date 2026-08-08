@@ -19,6 +19,8 @@ interface ReleaseWithEntries extends Release {
 interface ChangelogProps {
   projectName: string;
   projectDescription: string;
+  /** URL prefix of the app being rendered: '' for the default app, else '/slug'. */
+  basePath?: string;
   releases: ReleaseWithEntries[];
   standaloneEntries: EntryWithSection[];
   entryGrouping?: 'category' | 'section';
@@ -227,9 +229,9 @@ export const EntriesBySectionView: FC<{ entries: EntryWithSection[] }> = ({ entr
 
 // A single release rendered inside a date bucket: version + title + summary,
 // then its entries sub-grouped by category or section.
-const ReleaseBlock: FC<{ release: ReleaseWithEntries; useSection: boolean }> = ({ release, useSection }) => {
+const ReleaseBlock: FC<{ release: ReleaseWithEntries; useSection: boolean; basePath: string }> = ({ release, useSection, basePath }) => {
   const summaryHtml = renderMarkdown(release.summary || '');
-  const releaseHref = `/releases/${encodeURIComponent(release.version)}`;
+  const releaseHref = `${basePath}/releases/${encodeURIComponent(release.version)}`;
   return (
     <div class="timeline-release" id={`release-${release.version}`}>
       <div class="timeline-header">
@@ -255,6 +257,7 @@ const ReleaseBlock: FC<{ release: ReleaseWithEntries; useSection: boolean }> = (
 export const Changelog: FC<ChangelogProps> = ({
   projectName,
   projectDescription,
+  basePath = '',
   releases,
   standaloneEntries,
   entryGrouping = 'category',
@@ -314,7 +317,7 @@ export const Changelog: FC<ChangelogProps> = ({
                     {bucketLabel(bucket.date, timezone, dateGrouping)}
                   </time>
                   {bucket.releases.map((release) => (
-                    <ReleaseBlock release={release} useSection={useSection} />
+                    <ReleaseBlock release={release} useSection={useSection} basePath={basePath} />
                   ))}
                   {bucket.standalone.length > 0 && (
                     <div class="timeline-standalone">

@@ -4249,3 +4249,202 @@ tbody tr:hover {
     font-size: var(--text-xl);
   }
 }
+
+/* ============================================
+   App Switcher (sidebar)
+   ============================================ */
+.app-switcher {
+  position: relative;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.app-switcher-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-md);
+  color: #FFFFFF;
+  font-family: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition: background-color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.app-switcher-trigger:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+.app-switcher-current {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.app-switcher-name {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: #FFFFFF;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-switcher-path {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--color-sidebar-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-switcher-chevron {
+  flex-shrink: 0;
+  opacity: 0.6;
+  transition: transform var(--transition-fast);
+}
+
+.app-switcher.open .app-switcher-chevron {
+  transform: rotate(180deg);
+}
+
+.app-switcher-menu {
+  position: absolute;
+  left: var(--space-4);
+  right: var(--space-4);
+  top: calc(100% - var(--space-2));
+  z-index: 110;
+  padding: var(--space-1);
+  background: #1C1917;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-md);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.45);
+}
+
+.app-switcher-menu[hidden] {
+  display: none;
+}
+
+.app-switcher-item {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--color-sidebar-text);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--transition-fast), color var(--transition-fast);
+}
+
+.app-switcher-item:hover {
+  background-color: var(--color-sidebar-hover);
+  color: #FFFFFF;
+}
+
+.app-switcher-item.active {
+  background-color: rgba(79, 70, 229, 0.16);
+  color: #FFFFFF;
+}
+
+.app-switcher-item-name {
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+.app-switcher-item-path {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+.app-switcher-manage {
+  display: block;
+  margin-top: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--color-sidebar-text);
+  font-size: var(--text-xs);
+  text-decoration: none;
+  transition: color var(--transition-fast);
+}
+
+.app-switcher-manage:hover {
+  color: #FFFFFF;
+}
+
+/* ============================================
+   Apps Page
+   ============================================ */
+.app-badge {
+  margin-left: var(--space-2);
+  vertical-align: middle;
+}
+
+.app-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.app-form {
+  max-width: 640px;
+}
+
+.app-slug-warning {
+  display: block;
+  margin-top: var(--space-2);
+  color: var(--color-warning);
+}
+
+/* ============================================
+   Settings Scope Headings
+   ============================================ */
+.settings-scope {
+  margin: var(--space-10) 0 var(--space-4);
+}
+
+.settings-scope:first-of-type {
+  margin-top: 0;
+}
+
+.settings-scope-title {
+  font-family: var(--font-heading);
+  font-size: var(--text-lg);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.settings-scope-description {
+  margin-top: var(--space-1);
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+.settings-code {
+  display: inline-block;
+  padding: var(--space-1) var(--space-2);
+  background-color: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+
+.page-header-scope {
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}

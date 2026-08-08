@@ -1,12 +1,15 @@
 import { Hono } from 'hono';
+import type { Context, MiddlewareHandler } from 'hono';
 import type { Bindings } from '../bindings';
 import { listReleases, getRelease, getReleaseByVersion } from '../services/releases';
 import { listEntries } from '../services/entries';
-import { getAllSettings } from '../services/settings';
+import { getAllAppSettings } from '../services/settings';
+import { appBasePath } from '../services/apps';
+import { resolveAppFromSlugSegment } from '../services/app-resolver';
 import { generateRSS } from '../services/rss';
 import { effectiveEntryDate, effectiveReleaseDate } from '../services/datetime';
 import { getCachedResponse, cacheResponse } from '../services/cache';
-import type { Release, EntryWithSection } from '../db/schema';
+import type { App, Release, EntryWithSection } from '../db/schema';
 
 import { DEFAULT_FAVICON } from '../views/components/default-favicon';
 import { PublicLayout } from '../views/layouts/public-layout';
@@ -18,18 +21,23 @@ interface ReleaseWithEntries extends Release {
   entries: EntryWithSection[];
 }
 
+/** The app a public request addresses, resolved once per request. */
+type PublicEnv = { Bindings: Bindings; Variables: { publicApp: App } };
+
+type PublicHandler = (c: Context<PublicEnv>) => Promise<Response>;
+
 // ─── Shared Data Fetching ──────────────────────────────
 
-export async function fetchChangelogData(db: D1Database) {
-  const settings = await getAllSettings(db);
+export async function fetchChangelogData(db: D1Database, appId: number) {
+  const settings = await getAllAppSettings(db, appId);
   const projectName = settings['project_name'] || 'Changelog';
   const projectDescription = settings['project_description'] || '';
 
-  const releaseSummaries = await listReleases(db, { status: 'published' });
+  const releaseSummaries = await listReleases(db, appId, { status: 'published' });
 
   const releases: ReleaseWithEntries[] = [];
   for (const r of releaseSummaries) {
-    const full = await getRelease(db, r.id);
+    const full = await getRelease(db, appId, r.id);
     if (full) {
       releases.push(full);
     }
@@ -41,7 +49,7 @@ export async function fetchChangelogData(db: D1Database) {
     return new Date(dateB).getTime() - new Date(dateA).getTime();
   });
 
-  const allPublishedEntries = await listEntries(db, { status: 'published' });
+  const allPublishedEntries = await listEntries(db, appId, { status: 'published' });
   const releaseEntryIds = new Set<number>();
   for (const r of releases) {
     for (const e of r.entries) {
@@ -67,7 +75,7 @@ export async function fetchChangelogData(db: D1Database) {
   return { projectName, projectDescription, releases, standaloneEntries, logoUrl, faviconUrl, entryGrouping, theme, primaryColor, timezone, dateGrouping, showTitle, showDescription, hideAttribution };
 }
 
-const pub = new Hono<{ Bindings: Bindings }>();
+const pub = new Hono<PublicEnv>();
 
 // ─── Herald default icon ───────────────────────────────
 
@@ -91,6 +99,7 @@ pub.get('/herald-icon.png', (c) => {
 
 // ─── Image Serving ─────────────────────────────────────
 
+// Images are stored per install, not per app, so this stays at the site root.
 pub.get('/images/:key', async (c) => {
   const key = c.req.param('key');
 
@@ -130,20 +139,32 @@ pub.get('/images/:key', async (c) => {
   return response;
 });
 
+// ─── Embed Script Redirect ──────────────────────────────
+
+// One script serves every app — the widget is pointed at an app by the embed
+// URL it loads, so this stays at the site root.
+pub.get('/embed.js', (c) => {
+  return c.redirect('/assets/embed.js', 301);
+});
+
 // ─── Public Changelog Page ──────────────────────────────
 
-pub.get('/', async (c) => {
+const changelogPage: PublicHandler = async (c) => {
   const cached = await getCachedResponse(c.req.raw);
   if (cached) return cached;
 
+  const app = c.get('publicApp');
+  const basePath = appBasePath(app);
+
   const { projectName, projectDescription, releases, standaloneEntries, logoUrl, faviconUrl, entryGrouping, theme, primaryColor, timezone, dateGrouping, showTitle, showDescription, hideAttribution } =
-    await fetchChangelogData(c.env.DB);
+    await fetchChangelogData(c.env.DB, app.id);
 
   const response = await c.html(
     <PublicLayout
       title="Changelog"
       description={projectDescription}
       projectName={projectName}
+      basePath={basePath}
       logoUrl={logoUrl}
       faviconUrl={faviconUrl}
       theme={theme}
@@ -153,6 +174,7 @@ pub.get('/', async (c) => {
       <Changelog
         projectName={projectName}
         projectDescription={projectDescription}
+        basePath={basePath}
         releases={releases}
         standaloneEntries={standaloneEntries}
         entryGrouping={entryGrouping}
@@ -168,31 +190,35 @@ pub.get('/', async (c) => {
   c.executionCtx.waitUntil(cacheResponse(c.req.raw, response));
 
   return response;
-});
+};
 
 // ─── Public Release Permalink ──────────────────────────
 
-pub.get('/releases/:slug', async (c) => {
+const releasePage: PublicHandler = async (c) => {
   const cached = await getCachedResponse(c.req.raw);
   if (cached) return cached;
 
-  const slugParam = c.req.param('slug');
+  const app = c.get('publicApp');
+  const basePath = appBasePath(app);
+
+  const versionParam = c.req.param('version');
+  if (!versionParam) return c.notFound();
   let version: string;
   try {
-    version = decodeURIComponent(slugParam);
+    version = decodeURIComponent(versionParam);
   } catch {
     return c.notFound();
   }
 
-  const release = await getReleaseByVersion(c.env.DB, version);
+  const release = await getReleaseByVersion(c.env.DB, app.id, version);
   if (!release || release.status !== 'published') {
     return c.notFound();
   }
 
-  const full = await getRelease(c.env.DB, release.id);
+  const full = await getRelease(c.env.DB, app.id, release.id);
   if (!full) return c.notFound();
 
-  const settings = await getAllSettings(c.env.DB);
+  const settings = await getAllAppSettings(c.env.DB, app.id);
   const projectName = settings['project_name'] || 'Changelog';
   const projectDescription = settings['project_description'] || '';
   const logoKey = settings['logo_image_key'] || '';
@@ -213,6 +239,7 @@ pub.get('/releases/:slug', async (c) => {
       title={pageTitle}
       description={description}
       projectName={projectName}
+      basePath={basePath}
       logoUrl={logoUrl}
       faviconUrl={faviconUrl}
       theme={theme}
@@ -221,6 +248,7 @@ pub.get('/releases/:slug', async (c) => {
     >
       <ReleaseDetail
         projectName={projectName}
+        basePath={basePath}
         release={full}
         entryGrouping={entryGrouping}
         timezone={timezone}
@@ -232,22 +260,26 @@ pub.get('/releases/:slug', async (c) => {
   c.executionCtx.waitUntil(cacheResponse(c.req.raw, response));
 
   return response;
-});
+};
 
 // ─── Embeddable Widget ──────────────────────────────────
 
-pub.get('/embed', async (c) => {
+const embedPage: PublicHandler = async (c) => {
   const cached = await getCachedResponse(c.req.raw);
   if (cached) return cached;
 
+  const app = c.get('publicApp');
+  const basePath = appBasePath(app);
+
   const { projectName, projectDescription, releases, standaloneEntries, faviconUrl, entryGrouping, theme, primaryColor, timezone, dateGrouping, showTitle, showDescription } =
-    await fetchChangelogData(c.env.DB);
+    await fetchChangelogData(c.env.DB, app.id);
 
   const response = await c.html(
-    <EmbedLayout faviconUrl={faviconUrl} theme={theme} primaryColor={primaryColor}>
+    <EmbedLayout faviconUrl={faviconUrl} theme={theme} primaryColor={primaryColor} basePath={basePath}>
       <Changelog
         projectName={projectName}
         projectDescription={projectDescription}
+        basePath={basePath}
         releases={releases}
         standaloneEntries={standaloneEntries}
         entryGrouping={entryGrouping}
@@ -263,19 +295,22 @@ pub.get('/embed', async (c) => {
   c.executionCtx.waitUntil(cacheResponse(c.req.raw, response));
 
   return response;
-});
+};
 
 // ─── Embed JSON API (public, no auth) ───────────────────
 
-pub.get('/embed.json', async (c) => {
+const embedJson: PublicHandler = async (c) => {
   const cached = await getCachedResponse(c.req.raw);
   if (cached) return cached;
 
+  const app = c.get('publicApp');
+  const basePath = appBasePath(app);
+
   const { projectName, projectDescription, releases, standaloneEntries, entryGrouping, timezone, dateGrouping } =
-    await fetchChangelogData(c.env.DB);
+    await fetchChangelogData(c.env.DB, app.id);
 
   const url = new URL(c.req.url);
-  const changelogUrl = `${url.protocol}//${url.host}`;
+  const changelogUrl = `${url.protocol}//${url.host}${basePath}`;
 
   const data = {
     projectName,
@@ -319,52 +354,24 @@ pub.get('/embed.json', async (c) => {
   c.executionCtx.waitUntil(cacheResponse(c.req.raw, response));
 
   return response;
-});
-
-// ─── Embed Script Redirect ──────────────────────────────
-
-pub.get('/embed.js', (c) => {
-  return c.redirect('/assets/embed.js', 301);
-});
+};
 
 // ─── RSS Feed ───────────────────────────────────────────
 
-pub.get('/feed.xml', async (c) => {
+const feedXml: PublicHandler = async (c) => {
   const cached = await getCachedResponse(c.req.raw);
   if (cached) return cached;
 
-  const settings = await getAllSettings(c.env.DB);
-  const projectName = settings['project_name'] || 'Changelog';
-  const projectDescription = settings['project_description'] || '';
+  const app = c.get('publicApp');
+  const basePath = appBasePath(app);
+
+  const { projectName, projectDescription, releases, standaloneEntries, entryGrouping } =
+    await fetchChangelogData(c.env.DB, app.id);
 
   const url = new URL(c.req.url);
-  const baseUrl = `${url.protocol}//${url.host}`;
-
-  const releaseSummaries = await listReleases(c.env.DB, { status: 'published' });
-  const releases: ReleaseWithEntries[] = [];
-  for (const r of releaseSummaries) {
-    const full = await getRelease(c.env.DB, r.id);
-    if (full) {
-      releases.push(full);
-    }
-  }
-
-  releases.sort((a, b) => {
-    const dateA = a.published_at || a.created_at;
-    const dateB = b.published_at || b.created_at;
-    return new Date(dateB).getTime() - new Date(dateA).getTime();
-  });
-
-  const allPublishedEntries = await listEntries(c.env.DB, { status: 'published' });
-  const releaseEntryIds = new Set<number>();
-  for (const r of releases) {
-    for (const e of r.entries) {
-      releaseEntryIds.add(e.id);
-    }
-  }
-  const standaloneEntries = allPublishedEntries.filter((e) => !releaseEntryIds.has(e.id));
-
-  const entryGrouping = (settings['entry_grouping'] as 'category' | 'section') || 'category';
+  // Item links and the channel link live under the app's base path, so the feed
+  // of a non-default app points at that app's pages.
+  const baseUrl = `${url.protocol}//${url.host}${basePath}`;
 
   const xml = generateRSS(releases, standaloneEntries, {
     name: projectName,
@@ -380,6 +387,62 @@ pub.get('/feed.xml', async (c) => {
   c.executionCtx.waitUntil(cacheResponse(c.req.raw, response));
 
   return response;
-});
+};
+
+// ─── App Resolution ─────────────────────────────────────
+
+/** Site-root pages belong to the default app. */
+const withDefaultApp: MiddlewareHandler<PublicEnv> = async (c, next) => {
+  const app = await resolveAppFromSlugSegment(c.env.DB, undefined);
+  if (!app) return c.notFound();
+  c.set('publicApp', app);
+  await next();
+};
+
+/**
+ * `/:appSlug/...` pages belong to the named app. Reserved and unknown slugs
+ * 404; the default app's own slug redirects to the site root so each page has
+ * exactly one canonical URL.
+ */
+const withSlugApp: MiddlewareHandler<PublicEnv> = async (c, next) => {
+  const slug = c.req.param('appSlug');
+  const app = await resolveAppFromSlugSegment(c.env.DB, slug);
+  if (!app) return c.notFound();
+
+  const url = new URL(c.req.url);
+  if (app.is_default) {
+    const rest = url.pathname.slice(`/${slug}`.length) || '/';
+    return c.redirect(rest + url.search, 301);
+  }
+
+  // `/tiller/` is the same page as `/tiller`; the router only serves the latter.
+  if (url.pathname.endsWith('/')) {
+    return c.redirect(url.pathname.replace(/\/+$/, '') + url.search, 301);
+  }
+
+  c.set('publicApp', app);
+  await next();
+};
+
+// ─── Routes ─────────────────────────────────────────────
+
+// Default app at the site root — unchanged URLs for every existing install.
+pub.get('/', withDefaultApp, changelogPage);
+pub.get('/releases/:version', withDefaultApp, releasePage);
+pub.get('/embed', withDefaultApp, embedPage);
+pub.get('/embed.json', withDefaultApp, embedJson);
+pub.get('/feed.xml', withDefaultApp, feedXml);
+
+// Every other app under its slug. Registered last so the routes above (and the
+// /setup, /auth, /admin, /api mounts in index.ts) always win the match.
+const appPages = new Hono<PublicEnv>();
+appPages.use('*', withSlugApp);
+appPages.get('/', changelogPage);
+appPages.get('/releases/:version', releasePage);
+appPages.get('/embed', embedPage);
+appPages.get('/embed.json', embedJson);
+appPages.get('/feed.xml', feedXml);
+
+pub.route('/:appSlug', appPages);
 
 export default pub;

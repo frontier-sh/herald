@@ -3,7 +3,6 @@ import { getCookie, deleteCookie } from 'hono/cookie';
 import type { Bindings } from '../bindings';
 import { validateApiKey } from '../services/api-keys';
 import { getAppConfig } from '../services/github-app';
-import { getAllSettings } from '../services/settings';
 
 export async function signValue(
   value: string,
@@ -36,22 +35,29 @@ export async function verifySignature(
   return expected === signature;
 }
 
-export const apiKeyAuth = createMiddleware<{ Bindings: Bindings }>(
-  async (c, next) => {
-    const authHeader = c.req.header('Authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return c.json({ error: 'Missing or invalid Authorization header' }, 401);
-    }
+// API key auth. Beyond authenticating the request it establishes its tenant:
+// every key belongs to exactly one app, and `apiKeyAppId` is what the /api
+// handlers scope their queries by. Keys issued before multi-app support have
+// app_id = 1, so existing GitHub Actions keep writing to the default app.
+export const apiKeyAuth = createMiddleware<{
+  Bindings: Bindings;
+  Variables: { apiKeyAppId: number };
+}>(async (c, next) => {
+  const authHeader = c.req.header('Authorization');
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return c.json({ error: 'Missing or invalid Authorization header' }, 401);
+  }
 
-    const token = authHeader.slice(7);
-    const valid = await validateApiKey(c.env.DB, token);
-    if (!valid) {
-      return c.json({ error: 'Invalid API key' }, 401);
-    }
+  const token = authHeader.slice(7);
+  const key = await validateApiKey(c.env.DB, token);
+  if (!key) {
+    return c.json({ error: 'Invalid API key' }, 401);
+  }
 
-    await next();
-  },
-);
+  c.set('apiKeyAppId', key.app_id);
+
+  await next();
+});
 
 type AdminAuthEnv = {
   Bindings: Bindings;
@@ -107,12 +113,7 @@ export const adminAuth = createMiddleware<AdminAuthEnv>(async (c, next) => {
 
   c.set('githubUser', username);
 
-  // Load branding for the admin chrome (sidebar logo + favicon).
-  const settings = await getAllSettings(c.env.DB);
-  const logoKey = settings['logo_image_key'] || '';
-  const faviconKey = settings['favicon_image_key'] || '';
-  c.set('logoUrl', logoKey ? `/images/${logoKey}` : null);
-  c.set('faviconUrl', faviconKey ? `/images/${faviconKey}` : null);
-
+  // Branding (sidebar logo + favicon) is per-app now, so it's loaded by the
+  // current-app middleware in routes/admin.tsx once the app is resolved.
   await next();
 });

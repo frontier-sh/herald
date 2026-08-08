@@ -8,9 +8,11 @@ interface EmbedLayoutProps {
   faviconUrl?: string | null;
   theme?: string;
   primaryColor?: string;
+  /** URL prefix of the app being rendered: '' for the default app, else '/slug'. */
+  basePath?: string;
 }
 
-export const EmbedLayout: FC<EmbedLayoutProps> = ({ children, faviconUrl, theme, primaryColor }) => {
+export const EmbedLayout: FC<EmbedLayoutProps> = ({ children, faviconUrl, theme, primaryColor, basePath = '' }) => {
   return (
     <html lang="en">
       <head>
@@ -62,7 +64,7 @@ export const EmbedLayout: FC<EmbedLayoutProps> = ({ children, faviconUrl, theme,
                 items[i].style.display = 'none';
               }
 
-              var changelogUrl = window.location.origin;
+              var changelogUrl = window.location.origin + '${basePath}';
               var container = document.querySelector('.changelog-timeline');
               if (container) {
                 var viewMore = document.createElement('div');

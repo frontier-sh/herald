@@ -17,6 +17,9 @@ document.addEventListener('DOMContentLoaded', () => {
   initAiToggleVisibility();
   initAiTestButton();
   initDeleteKeyButtons();
+  initAppSwitcher();
+  initSlugSuggestion();
+  initDeleteAppButtons();
   initCustomiseTabs();
   initBrandUploaders();
   initSectionCombo();
@@ -605,6 +608,106 @@ function initDeleteKeyButtons(): void {
         document.body.appendChild(form);
         form.submit();
       }
+    });
+  });
+}
+
+/**
+ * Sidebar app switcher: open/close the app list. The menu itself is a plain
+ * form, so switching still works with JavaScript disabled (it just renders
+ * expanded).
+ */
+function initAppSwitcher(): void {
+  const root = document.querySelector<HTMLElement>('[data-app-switcher]');
+  if (!root) return;
+
+  const toggle = root.querySelector<HTMLButtonElement>('[data-app-switcher-toggle]');
+  const menu = root.querySelector<HTMLElement>('[data-app-switcher-menu]');
+  if (!toggle || !menu) return;
+
+  const isOpen = (): boolean => !menu.hasAttribute('hidden');
+
+  const setOpen = (open: boolean): void => {
+    if (open) {
+      menu.removeAttribute('hidden');
+    } else {
+      menu.setAttribute('hidden', '');
+    }
+    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    root.classList.toggle('open', open);
+  };
+
+  toggle.addEventListener('click', (e) => {
+    e.stopPropagation();
+    setOpen(!isOpen());
+  });
+
+  document.addEventListener('click', (e) => {
+    if (isOpen() && !root.contains(e.target as Node)) setOpen(false);
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && isOpen()) setOpen(false);
+  });
+}
+
+/**
+ * Suggest a URL slug from the app name while creating an app. Stops as soon as
+ * the slug is edited by hand, and never touches an existing app's slug (that
+ * would silently move its public URLs).
+ */
+function initSlugSuggestion(): void {
+  const source = document.querySelector<HTMLInputElement>('[data-slug-source]');
+  const target = document.querySelector<HTMLInputElement>('[data-slug-target]');
+  if (!source || !target) return;
+  if (target.getAttribute('data-slug-locked') === 'true') return;
+
+  let auto = target.value === '';
+
+  target.addEventListener('input', () => {
+    auto = target.value === '';
+  });
+
+  source.addEventListener('input', () => {
+    if (!auto) return;
+    target.value = source.value
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 64);
+  });
+}
+
+/**
+ * Delete confirmation for apps. Deleting an app takes its entries, releases and
+ * API keys with it, so the name has to be typed out.
+ */
+function initDeleteAppButtons(): void {
+  const deleteButtons = document.querySelectorAll<HTMLButtonElement>('[data-delete-app-url]');
+
+  deleteButtons.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const deleteUrl = btn.getAttribute('data-delete-app-url');
+      const appName = btn.getAttribute('data-delete-app-name') || '';
+      if (!deleteUrl) return;
+
+      const answer = window.prompt(
+        `Deleting "${appName}" permanently removes its entries, releases, sections, settings and API keys. This cannot be undone.\n\nType the app name to confirm:`,
+      );
+      if (answer === null) return;
+      if (answer.trim() !== appName) {
+        window.alert('That name didn’t match — nothing was deleted.');
+        return;
+      }
+
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.action = deleteUrl;
+      document.body.appendChild(form);
+      form.submit();
     });
   });
 }

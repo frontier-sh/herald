@@ -9,9 +9,16 @@ interface ReleaseEditProps {
   availableEntries?: EntryWithSection[];
   /** Configured default timezone for the editable date field. */
   timezone?: string;
+  /** URL prefix of the current app: '' for the default app, else '/slug'. */
+  basePath?: string;
 }
 
-export const ReleaseEdit: FC<ReleaseEditProps> = ({ release, availableEntries = [], timezone = 'UTC' }) => {
+export const ReleaseEdit: FC<ReleaseEditProps> = ({
+  release,
+  availableEntries = [],
+  timezone = 'UTC',
+  basePath = '',
+}) => {
   const isEditing = !!release;
   const pageTitle = isEditing ? 'Edit Release' : 'New Release';
   const action = isEditing ? `/admin/releases/${release!.id}` : '/admin/releases';
@@ -87,13 +94,26 @@ export const ReleaseEdit: FC<ReleaseEditProps> = ({ release, availableEntries = 
 
       <div class="page-header">
         <h1>{pageTitle}</h1>
-        {isEditing && release!.status === 'draft' && (
-          <form method="post" action={`/admin/releases/${release!.id}/publish`} style="margin: 0;">
-            <button type="submit" class="btn btn-primary btn-sm">
-              Publish
-            </button>
-          </form>
-        )}
+        <div class="flex gap-2">
+          {isEditing && release!.status === 'published' && (
+            /* Permalink on the current app's public changelog. */
+            <a
+              href={`${basePath}/releases/${encodeURIComponent(release!.version)}`}
+              class="btn btn-secondary btn-sm"
+              target="_blank"
+              rel="noopener"
+            >
+              View
+            </a>
+          )}
+          {isEditing && release!.status === 'draft' && (
+            <form method="post" action={`/admin/releases/${release!.id}/publish`} style="margin: 0;">
+              <button type="submit" class="btn btn-primary btn-sm">
+                Publish
+              </button>
+            </form>
+          )}
+        </div>
       </div>
 
       <form method="post" action={action} class="release-form" id="release-form">

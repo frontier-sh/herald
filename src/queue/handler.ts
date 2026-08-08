@@ -3,10 +3,17 @@ import { summarizeContent } from '../services/ai';
 import { publishEntry } from '../services/entries';
 import { purgePublicCache, purgeReleasePages } from '../services/cache';
 import { getReleaseVersionsForEntry } from '../services/releases';
-import { getSetting } from '../services/settings';
+import { getSetting, getAppSetting } from '../services/settings';
+import { getApp } from '../services/apps';
 import { notifyEntryPublished, notifyPendingReleasesForEntry } from '../services/slack';
 import { BASE_URL_SETTING } from '../middleware/base-url';
 
+/**
+ * Unchanged across the multi-app upgrade: the message still carries only the
+ * entry id, and the handler discovers the app from the entry row. Messages
+ * enqueued before an upgrade therefore keep processing — their entries were
+ * backfilled to app_id = 1 by migration 0012.
+ */
 interface QueueMessage {
   type: 'summarize';
   entryId: number;
@@ -35,37 +42,43 @@ export async function handleQueue(
         'UPDATE entries SET ai_status = ? WHERE id = ?',
       ).bind('processing', entryId).run();
 
-      // Get the entry's current title/category, the publish intent, and the
-      // AI model setting.
+      // Get the entry's current title/category, the publish intent, and — since
+      // the message carries no tenant — the app it belongs to. This read is
+      // deliberately NOT app-scoped: it's what establishes the scope for every
+      // call below.
       const entry = await env.DB.prepare(
-        'SELECT title, category, publish_on_ai_complete FROM entries WHERE id = ?',
-      ).bind(entryId).first();
-
-      const modelSetting = await env.DB.prepare(
-        "SELECT value FROM settings WHERE key = 'ai_model'",
-      ).first();
-
-      const personalitySetting = await env.DB.prepare(
-        "SELECT value FROM settings WHERE key = 'ai_personality'",
-      ).first();
+        'SELECT app_id, title, category, publish_on_ai_complete FROM entries WHERE id = ?',
+      ).bind(entryId).first<{
+        app_id: number;
+        title: string;
+        category: string;
+        publish_on_ai_complete: number;
+      }>();
 
       if (!entry) {
         message.ack();
         continue;
       }
 
+      const appId = entry.app_id;
+
+      // The model is an instance-wide setting; personality and the product
+      // name/description belong to the entry's app.
+      const model = await getSetting(env.DB, 'ai_model');
+      const personality = await getAppSetting(env.DB, appId, 'ai_personality');
+
       // Product name/description give the model domain context so it frames
       // changes correctly and uses the product's own terminology.
-      const projectName = await getSetting(env.DB, 'project_name');
-      const projectDescription = await getSetting(env.DB, 'project_description');
+      const projectName = await getAppSetting(env.DB, appId, 'project_name');
+      const projectDescription = await getAppSetting(env.DB, appId, 'project_description');
 
       // Run AI summarization (rewrites both the title and the body)
       const summary = await summarizeContent(
         env.AI,
         rawContent,
-        entry.category as string,
-        modelSetting?.value as string,
-        (personalitySetting?.value as string) || 'neutral',
+        entry.category,
+        model ?? undefined,
+        personality || 'neutral',
         projectName ?? undefined,
         projectDescription ?? undefined,
       );
@@ -89,9 +102,9 @@ export async function handleQueue(
       // The body is rewritten; keep the existing title/category only if the AI
       // didn't give us a better one. `summary.category` is already validated
       // against the allowed list (undefined when the model omitted it).
-      const title = summary.title || (entry.title as string);
+      const title = summary.title || entry.title;
       const content = summary.content;
-      const category = summary.category ?? (entry.category as string);
+      const category = summary.category ?? entry.category;
 
       // Update entry with AI-generated title, category, and content
       await env.DB.prepare(
@@ -102,7 +115,7 @@ export async function handleQueue(
       // This is the only point where ingested/auto-publish entries go public, so
       // the raw commit is never exposed before the AI rewrite.
       if (entry.publish_on_ai_complete) {
-        await publishEntry(env.DB, entryId);
+        await publishEntry(env.DB, appId, entryId);
         // Notify Slack now that this entry is genuinely public. notify* never
         // throws, so a Slack hiccup can't fail the job or trigger a retry that
         // re-runs the AI rewrite. Skip when a consolidated release message
@@ -123,11 +136,16 @@ export async function handleQueue(
       const baseUrl =
         env.BASE_URL || (await getSetting(env.DB, BASE_URL_SETTING));
       if (baseUrl) {
-        const versions = await getReleaseVersionsForEntry(env.DB, entryId);
-        await Promise.all([
-          purgePublicCache(baseUrl),
-          purgeReleasePages(baseUrl, versions),
-        ]);
+        // Only this entry's app has changed, so only its pages are purged (they
+        // live under the app's base path).
+        const app = await getApp(env.DB, appId);
+        if (app) {
+          const versions = await getReleaseVersionsForEntry(env.DB, entryId);
+          await Promise.all([
+            purgePublicCache(baseUrl, app),
+            purgeReleasePages(baseUrl, app, versions),
+          ]);
+        }
       }
 
       message.ack();

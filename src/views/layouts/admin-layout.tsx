@@ -4,6 +4,7 @@ import { FlashMessageBanner } from '../components/flash-message';
 import { ClientHead, ClientBody } from '../components/client-assets';
 import { DEFAULT_FAVICON } from '../components/default-favicon';
 import type { FlashMessage } from '../../middleware/flash';
+import type { App } from '../../db/schema';
 
 interface AdminLayoutProps {
   children: any;
@@ -13,6 +14,9 @@ interface AdminLayoutProps {
   githubUser?: string;
   logoUrl?: string | null;
   faviconUrl?: string | null;
+  /** App the admin UI is acting on — branding and the sidebar switcher. */
+  currentApp?: App;
+  apps?: App[];
 }
 
 export const AdminLayout: FC<AdminLayoutProps> = ({
@@ -23,6 +27,8 @@ export const AdminLayout: FC<AdminLayoutProps> = ({
   githubUser,
   logoUrl,
   faviconUrl,
+  currentApp,
+  apps,
 }) => {
   const pageTitle = title ? `${title} - Herald Admin` : 'Herald Admin';
 
@@ -54,7 +60,13 @@ export const AdminLayout: FC<AdminLayoutProps> = ({
       </head>
       <body>
         <div class="layout">
-          <Sidebar currentPath={currentPath} githubUser={githubUser} logoUrl={logoUrl} />
+          <Sidebar
+            currentPath={currentPath}
+            githubUser={githubUser}
+            logoUrl={logoUrl}
+            currentApp={currentApp}
+            apps={apps}
+          />
           <main class="main-content">
             <div class="content-container">
               {flash && (

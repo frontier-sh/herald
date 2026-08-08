@@ -1,15 +1,84 @@
 import type { FC } from 'hono/jsx';
+import type { App } from '../../db/schema';
+import { appBasePath } from '../../services/apps';
 
 interface SidebarProps {
   currentPath?: string;
   githubUser?: string;
   logoUrl?: string | null;
+  /** App the admin UI is acting on. Absent only on the login page. */
+  currentApp?: App;
+  /** Every app, for the switcher. */
+  apps?: App[];
 }
+
+/** Switch the app every admin page reads and writes. Works without JavaScript. */
+const AppSwitcher: FC<{ currentApp: App; apps: App[]; currentPath: string }> = ({
+  currentApp,
+  apps,
+  currentPath,
+}) => {
+  const pathLabel = (app: App): string => appBasePath(app) || '/';
+
+  return (
+    <div class="app-switcher" data-app-switcher>
+      <button
+        type="button"
+        class="app-switcher-trigger"
+        data-app-switcher-toggle
+        aria-haspopup="true"
+        aria-expanded="false"
+      >
+        <span class="app-switcher-current">
+          <span class="app-switcher-name">{currentApp.name}</span>
+          <span class="app-switcher-path">{pathLabel(currentApp)}</span>
+        </span>
+        <svg
+          class="app-switcher-chevron"
+          width="14"
+          height="14"
+          viewBox="0 0 16 16"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path d="M4.5 6.5L8 10l3.5-3.5" />
+        </svg>
+      </button>
+
+      <div class="app-switcher-menu" data-app-switcher-menu hidden>
+        <form method="post" action="/admin/apps/switch">
+          {/* Switching lands on the same section of the newly selected app —
+              a record id from the previous app wouldn't resolve there. */}
+          <input type="hidden" name="redirect_to" value={currentPath} />
+          {apps.map((app) => (
+            <button
+              type="submit"
+              name="app_id"
+              value={String(app.id)}
+              class={`app-switcher-item${app.id === currentApp.id ? ' active' : ''}`}
+            >
+              <span class="app-switcher-item-name">{app.name}</span>
+              <span class="app-switcher-item-path">{pathLabel(app)}</span>
+            </button>
+          ))}
+        </form>
+        <a href="/admin/apps" class="app-switcher-manage">
+          Manage apps
+        </a>
+      </div>
+    </div>
+  );
+};
 
 export const Sidebar: FC<SidebarProps> = ({
   currentPath = '',
   githubUser,
   logoUrl,
+  currentApp,
+  apps = [],
 }) => {
   const isActive = (href: string): boolean => {
     if (href === '/admin') {
@@ -17,6 +86,9 @@ export const Sidebar: FC<SidebarProps> = ({
     }
     return currentPath?.startsWith(href) ?? false;
   };
+
+  // The public changelog of the current app, not necessarily the site root.
+  const changelogUrl = (currentApp ? appBasePath(currentApp) : '') || '/';
 
   return (
     <aside class="sidebar">
@@ -30,6 +102,9 @@ export const Sidebar: FC<SidebarProps> = ({
           <a href="/admin" class="sidebar-brand">Herald</a>
         )}
       </div>
+      {currentApp && (
+        <AppSwitcher currentApp={currentApp} apps={apps} currentPath={currentPath} />
+      )}
       <nav class="sidebar-nav">
         <a href="/admin" class={isActive('/admin') ? 'active' : ''}>
           <svg class="nav-icon" width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25">
@@ -67,6 +142,13 @@ export const Sidebar: FC<SidebarProps> = ({
           </svg>
           Customise
         </a>
+        <a href="/admin/apps" class={isActive('/admin/apps') ? 'active' : ''}>
+          <svg class="nav-icon" width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round">
+            <rect x="1.5" y="4.5" width="9" height="7" rx="1.5" />
+            <path d="M4.5 2.5h8a2 2 0 0 1 2 2v6" />
+          </svg>
+          Apps
+        </a>
         <a href="/admin/settings" class={isActive('/admin/settings') ? 'active' : ''}>
           <svg class="nav-icon" width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round">
             <path d="M2 4h3M9 4h5" />
@@ -80,7 +162,7 @@ export const Sidebar: FC<SidebarProps> = ({
         </a>
       </nav>
       <div class="sidebar-footer">
-        <a href="/" class="sidebar-footer-link" target="_blank" rel="noopener">
+        <a href={changelogUrl} class="sidebar-footer-link" target="_blank" rel="noopener">
           View Changelog &rarr;
         </a>
         {githubUser && (

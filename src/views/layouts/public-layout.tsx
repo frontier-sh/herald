@@ -7,6 +7,8 @@ interface PublicLayoutProps {
   title?: string;
   description?: string;
   projectName?: string;
+  /** URL prefix of the app being rendered: '' for the default app, else '/slug'. */
+  basePath?: string;
   logoUrl?: string | null;
   faviconUrl?: string | null;
   theme?: string;
@@ -19,6 +21,7 @@ export const PublicLayout: FC<PublicLayoutProps> = ({
   title,
   description,
   projectName,
+  basePath = '',
   logoUrl,
   faviconUrl,
   theme,
@@ -28,6 +31,8 @@ export const PublicLayout: FC<PublicLayoutProps> = ({
   const displayName = projectName || 'Changelog';
   const pageTitle = title ? `${title} - ${displayName}` : displayName;
   const metaDescription = description || `${displayName} - Stay up to date with the latest changes.`;
+  const homeHref = basePath || '/';
+  const feedHref = `${basePath}/feed.xml`;
 
   return (
     <html lang="en">
@@ -52,7 +57,7 @@ export const PublicLayout: FC<PublicLayoutProps> = ({
           href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,200..800&family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=JetBrains+Mono:wght@400;500;600&display=swap"
           rel="stylesheet"
         />
-        <link rel="alternate" type="application/rss+xml" title={`${displayName} RSS Feed`} href="/feed.xml" />
+        <link rel="alternate" type="application/rss+xml" title={`${displayName} RSS Feed`} href={feedHref} />
         <link rel="icon" href={faviconUrl || DEFAULT_FAVICON} />
         <ClientHead />
       </head>
@@ -64,14 +69,14 @@ export const PublicLayout: FC<PublicLayoutProps> = ({
         <div class="public-layout">
           <header class="public-header">
             <div class="public-header-inner">
-              <a href="/" class="public-brand">
+              <a href={homeHref} class="public-brand">
                 {logoUrl ? (
                   <img src={logoUrl} alt={displayName} class="public-brand-logo" />
                 ) : (
                   displayName
                 )}
               </a>
-              <a href="/feed.xml" class="rss-link" title="RSS Feed" target="_blank" rel="noopener">
+              <a href={feedHref} class="rss-link" title="RSS Feed" target="_blank" rel="noopener">
                 <svg class="rss-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
                   <circle cx="6.18" cy="17.82" r="2.18" />
                   <path d="M4 4.44v2.83c7.03 0 12.73 5.7 12.73 12.73h2.83c0-8.59-6.97-15.56-15.56-15.56zm0 5.66v2.83c3.9 0 7.07 3.17 7.07 7.07h2.83c0-5.47-4.43-9.9-9.9-9.9z" />

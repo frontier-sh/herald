@@ -11,6 +11,10 @@ interface ReleaseWithEntries extends Release {
 interface CustomisePageProps {
   settings: Record<string, string>;
   baseUrl: string;
+  /** URL prefix of the app being customised: '' for the default app, else '/slug'. */
+  basePath: string;
+  appName: string;
+  isDefaultApp: boolean;
   previewReleases: ReleaseWithEntries[];
   previewStandaloneEntries: EntryWithSection[];
   previewProjectName: string;
@@ -57,14 +61,15 @@ const THEMES = [
 export const CustomisePage: FC<CustomisePageProps> = ({
   settings,
   baseUrl,
+  basePath,
+  appName,
+  isDefaultApp,
   previewReleases,
   previewStandaloneEntries,
   previewProjectName,
   previewProjectDescription,
   previewLogoUrl,
 }) => {
-  const projectName = settings['project_name'] ?? '';
-  const projectDescription = settings['project_description'] ?? '';
   const logoKey = settings['logo_image_key'] ?? '';
   const faviconKey = settings['favicon_image_key'] ?? '';
   const logoUrl = logoKey ? `/images/${logoKey}` : null;
@@ -78,59 +83,22 @@ export const CustomisePage: FC<CustomisePageProps> = ({
   const hideAttribution = settings['hide_attribution'] === 'true';
   const timezones = listTimezones();
 
-  const changelogUrl = baseUrl;
+  // Every public URL on this page belongs to the app being customised, which is
+  // only the site root when that app is the default one.
+  const changelogUrl = `${baseUrl}${basePath}`;
   const embedCode = `<script src="${baseUrl}/embed.js"></script>`;
   const embedCodeWithDiv = `<div data-herald-widget></div>\n<script src="${baseUrl}/embed.js"></script>`;
   const embedCodeWithLimit = `<div data-herald-widget data-herald-limit="5"></div>\n<script src="${baseUrl}/embed.js"></script>`;
   const embedCodeInline = `<div data-herald-widget data-herald-inline></div>\n<script src="${baseUrl}/embed.js"></script>`;
-  const rssUrl = `${baseUrl}/feed.xml`;
+  const rssUrl = `${baseUrl}${basePath}/feed.xml`;
+  const embedUrl = `${baseUrl}${basePath}/embed`;
 
   return (
     <div>
       <div class="page-header">
         <h1>Customise</h1>
+        <span class="page-header-scope">{appName}</span>
       </div>
-
-      {/* General Section */}
-      <SettingsSection
-        title="General"
-        description="Basic information about your changelog project."
-      >
-        <form method="post" action="/admin/settings/general">
-          <div class="form-group">
-            <label for="project_name" class="form-label">
-              Project Name
-            </label>
-            <input
-              type="text"
-              id="project_name"
-              name="project_name"
-              class="form-input"
-              placeholder="My Project"
-              value={projectName}
-            />
-          </div>
-          <div class="form-group">
-            <label for="project_description" class="form-label">
-              Project Description
-            </label>
-            <textarea
-              id="project_description"
-              name="project_description"
-              class="form-textarea"
-              rows={3}
-              placeholder="A brief description of your project..."
-            >
-              {projectDescription}
-            </textarea>
-          </div>
-          <div class="settings-section-footer">
-            <button type="submit" class="btn btn-primary">
-              Save Changes
-            </button>
-          </div>
-        </form>
-      </SettingsSection>
 
       {/* Display Section */}
       <SettingsSection
@@ -393,6 +361,7 @@ export const CustomisePage: FC<CustomisePageProps> = ({
                 <Changelog
                   projectName={previewProjectName}
                   projectDescription={previewProjectDescription}
+                  basePath={basePath}
                   releases={previewReleases}
                   standaloneEntries={previewStandaloneEntries}
                   timezone={currentTimezone}
@@ -428,6 +397,12 @@ export const CustomisePage: FC<CustomisePageProps> = ({
 
         {/* Embed Panel */}
         <div class="customise-tab-panel" data-tab-panel="embed" style="display: none;">
+          {!isDefaultApp && (
+            <p class="form-hint">
+              The embed script always renders the default app's changelog. To embed{' '}
+              <strong>{appName}</strong>, point an iframe at <code>{embedUrl}</code>.
+            </p>
+          )}
           <p class="form-hint">Add the changelog widget to any webpage by pasting the code below. It loads asynchronously and creates an embedded changelog on your site.</p>
           <div class="customise-copyable">
             <code id="embed-code" class="customise-code">{embedCode}</code>

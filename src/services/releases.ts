@@ -28,10 +28,11 @@ export interface ReleaseWithEntries extends Release {
 
 export async function listReleases(
   db: D1Database,
+  appId: number,
   filters?: ListReleasesFilters,
 ): Promise<(Release & { entry_count: number })[]> {
-  const conditions: string[] = [];
-  const params: unknown[] = [];
+  const conditions: string[] = ['r.app_id = ?'];
+  const params: unknown[] = [appId];
 
   if (filters?.status) {
     conditions.push('r.status = ?');
@@ -43,9 +44,7 @@ export async function listReleases(
       (SELECT COUNT(*) FROM release_entries re WHERE re.release_id = r.id) AS entry_count
     FROM releases r`;
 
-  if (conditions.length > 0) {
-    sql += ' WHERE ' + conditions.join(' AND ');
-  }
+  sql += ' WHERE ' + conditions.join(' AND ');
   sql += ' ORDER BY r.created_at DESC';
 
   const result = await db
@@ -55,17 +54,23 @@ export async function listReleases(
   return result.results;
 }
 
+/** Versions are unique per app, so the lookup must be app-scoped too. */
 export async function getReleaseByVersion(
   db: D1Database,
+  appId: number,
   version: string,
 ): Promise<Release | null> {
   const result = await db
-    .prepare('SELECT * FROM releases WHERE version = ?')
-    .bind(version)
+    .prepare('SELECT * FROM releases WHERE app_id = ? AND version = ?')
+    .bind(appId, version)
     .first<Release>();
   return result ?? null;
 }
 
+/**
+ * Entry-driven, so scoping comes from the join rather than a parameter: the
+ * release must belong to the same app as the entry.
+ */
 export async function getReleaseVersionsForEntry(
   db: D1Database,
   entryId: number,
@@ -74,7 +79,8 @@ export async function getReleaseVersionsForEntry(
     .prepare(
       `SELECT r.version FROM releases r
        INNER JOIN release_entries re ON re.release_id = r.id
-       WHERE re.entry_id = ?`,
+       INNER JOIN entries e ON e.id = re.entry_id
+       WHERE re.entry_id = ? AND r.app_id = e.app_id`,
     )
     .bind(entryId)
     .all<{ version: string }>();
@@ -83,10 +89,19 @@ export async function getReleaseVersionsForEntry(
 
 export async function appendEntriesToRelease(
   db: D1Database,
+  appId: number,
   releaseId: number,
   entryIds: number[],
 ): Promise<void> {
   if (entryIds.length === 0) return;
+
+  // Both sides must belong to the app, so a release never picks up another
+  // app's entries (the SELECT yields no row when either check fails).
+  const release = await db
+    .prepare('SELECT id FROM releases WHERE id = ? AND app_id = ?')
+    .bind(releaseId, appId)
+    .first<{ id: number }>();
+  if (!release) return;
 
   const max = await db
     .prepare('SELECT COALESCE(MAX(sort_order), -1) AS max_order FROM release_entries WHERE release_id = ?')
@@ -97,9 +112,10 @@ export async function appendEntriesToRelease(
   for (const entryId of entryIds) {
     await db
       .prepare(
-        'INSERT OR IGNORE INTO release_entries (release_id, entry_id, sort_order) VALUES (?, ?, ?)',
+        `INSERT OR IGNORE INTO release_entries (release_id, entry_id, sort_order)
+         SELECT ?, e.id, ? FROM entries e WHERE e.id = ? AND e.app_id = ?`,
       )
-      .bind(releaseId, entryId, next)
+      .bind(releaseId, next, entryId, appId)
       .run();
     next += 1;
   }
@@ -107,11 +123,12 @@ export async function appendEntriesToRelease(
 
 export async function getRelease(
   db: D1Database,
+  appId: number,
   id: number,
 ): Promise<ReleaseWithEntries | null> {
   const release = await db
-    .prepare('SELECT * FROM releases WHERE id = ?')
-    .bind(id)
+    .prepare('SELECT * FROM releases WHERE id = ? AND app_id = ?')
+    .bind(id, appId)
     .first<Release>();
 
   if (!release) return null;
@@ -121,10 +138,10 @@ export async function getRelease(
       `SELECT e.*, s.name AS section_name FROM entries e
        INNER JOIN release_entries re ON re.entry_id = e.id
        LEFT JOIN sections s ON e.section_id = s.id
-       WHERE re.release_id = ?
+       WHERE re.release_id = ? AND e.app_id = ?
        ORDER BY re.sort_order ASC`,
     )
-    .bind(id)
+    .bind(id, appId)
     .all<EntryWithSection>();
 
   return { ...release, entries: entries.results };
@@ -132,21 +149,23 @@ export async function getRelease(
 
 export async function createRelease(
   db: D1Database,
+  appId: number,
   data: CreateReleaseData,
 ): Promise<Release> {
   const result = await db
     .prepare(
-      `INSERT INTO releases (version, title, summary, release_date)
-       VALUES (?, ?, ?, datetime(?))
+      `INSERT INTO releases (app_id, version, title, summary, release_date)
+       VALUES (?, ?, ?, ?, datetime(?))
        RETURNING *`,
     )
-    .bind(data.version, data.title ?? '', data.summary ?? '', data.release_date ?? null)
+    .bind(appId, data.version, data.title ?? '', data.summary ?? '', data.release_date ?? null)
     .first<Release>();
   return result!;
 }
 
 export async function updateRelease(
   db: D1Database,
+  appId: number,
   id: number,
   data: UpdateReleaseData,
   entryIds?: number[],
@@ -165,11 +184,11 @@ export async function updateRelease(
 
   if (fields.length > 0) {
     fields.push("updated_at = datetime('now')");
-    params.push(id);
+    params.push(id, appId);
 
     await db
       .prepare(
-        `UPDATE releases SET ${fields.join(', ')} WHERE id = ?`,
+        `UPDATE releases SET ${fields.join(', ')} WHERE id = ? AND app_id = ?`,
       )
       .bind(...params)
       .run();
@@ -179,37 +198,42 @@ export async function updateRelease(
   if (entryIds !== undefined) {
     // Remove existing entries
     await db
-      .prepare('DELETE FROM release_entries WHERE release_id = ?')
-      .bind(id)
+      .prepare(
+        'DELETE FROM release_entries WHERE release_id IN (SELECT id FROM releases WHERE id = ? AND app_id = ?)',
+      )
+      .bind(id, appId)
       .run();
 
-    // Insert new entries
+    // Insert new entries — ignoring any id that isn't this app's
     for (let i = 0; i < entryIds.length; i++) {
       await db
         .prepare(
-          'INSERT INTO release_entries (release_id, entry_id, sort_order) VALUES (?, ?, ?)',
+          `INSERT INTO release_entries (release_id, entry_id, sort_order)
+           SELECT ?, e.id, ? FROM entries e WHERE e.id = ? AND e.app_id = ?`,
         )
-        .bind(id, entryIds[i], i)
+        .bind(id, i, entryIds[i], appId)
         .run();
     }
   }
 
-  return getRelease(db, id);
+  return getRelease(db, appId, id);
 }
 
 export async function deleteRelease(
   db: D1Database,
+  appId: number,
   id: number,
 ): Promise<boolean> {
   const result = await db
-    .prepare('DELETE FROM releases WHERE id = ?')
-    .bind(id)
+    .prepare('DELETE FROM releases WHERE id = ? AND app_id = ?')
+    .bind(id, appId)
     .run();
   return result.meta.changes > 0;
 }
 
 export async function publishRelease(
   db: D1Database,
+  appId: number,
   id: number,
 ): Promise<ReleaseWithEntries | null> {
   // Publish the release itself
@@ -217,9 +241,9 @@ export async function publishRelease(
     .prepare(
       `UPDATE releases SET status = 'published', published_at = datetime('now'),
          release_date = COALESCE(release_date, datetime('now')), updated_at = datetime('now')
-       WHERE id = ?`,
+       WHERE id = ? AND app_id = ?`,
     )
-    .bind(id)
+    .bind(id, appId)
     .run();
 
   // Publish all associated entries — except any still pending/processing AI.
@@ -231,21 +255,23 @@ export async function publishRelease(
          entry_date = COALESCE(entry_date, datetime('now')),
          publish_on_ai_complete = 0, updated_at = datetime('now')
        WHERE id IN (SELECT entry_id FROM release_entries WHERE release_id = ?)
+         AND app_id = ?
          AND (ai_status IS NULL OR ai_status NOT IN ('pending', 'processing'))`,
     )
-    .bind(id)
+    .bind(id, appId)
     .run();
 
   await db
     .prepare(
       `UPDATE entries SET publish_on_ai_complete = 1
        WHERE id IN (SELECT entry_id FROM release_entries WHERE release_id = ?)
+         AND app_id = ?
          AND ai_status IN ('pending', 'processing')`,
     )
-    .bind(id)
+    .bind(id, appId)
     .run();
 
-  return getRelease(db, id);
+  return getRelease(db, appId, id);
 }
 
 // ─── Deferred publish-notification coordination ─────────
@@ -257,10 +283,14 @@ export async function publishRelease(
 // one send across concurrent queue workers and the publishing request.
 
 /** Flag a published release as awaiting its consolidated notification. */
-export async function markReleaseNotifyPending(db: D1Database, id: number): Promise<void> {
+export async function markReleaseNotifyPending(
+  db: D1Database,
+  appId: number,
+  id: number,
+): Promise<void> {
   await db
-    .prepare('UPDATE releases SET publish_notify_pending = 1 WHERE id = ?')
-    .bind(id)
+    .prepare('UPDATE releases SET publish_notify_pending = 1 WHERE id = ? AND app_id = ?')
+    .bind(id, appId)
     .run();
 }
 
@@ -272,6 +302,7 @@ export async function markReleaseNotifyPending(db: D1Database, id: number): Prom
  */
 export async function claimReleaseNotificationIfReady(
   db: D1Database,
+  appId: number,
   id: number,
 ): Promise<boolean> {
   const pending = await db
@@ -286,13 +317,19 @@ export async function claimReleaseNotificationIfReady(
 
   // Atomic claim: only the statement that actually flips the flag may send.
   const res = await db
-    .prepare('UPDATE releases SET publish_notify_pending = 0 WHERE id = ? AND publish_notify_pending = 1')
-    .bind(id)
+    .prepare(
+      'UPDATE releases SET publish_notify_pending = 0 WHERE id = ? AND app_id = ? AND publish_notify_pending = 1',
+    )
+    .bind(id, appId)
     .run();
   return (res.meta.changes ?? 0) > 0;
 }
 
-/** Releases that contain this entry and are awaiting their consolidated notification. */
+/**
+ * Releases that contain this entry and are awaiting their consolidated
+ * notification. Entry-driven, so the app scope comes from the join: only
+ * releases owned by the entry's own app can be returned.
+ */
 export async function releaseIdsAwaitingNotifyForEntry(
   db: D1Database,
   entryId: number,
@@ -301,7 +338,8 @@ export async function releaseIdsAwaitingNotifyForEntry(
     .prepare(
       `SELECT r.id AS id FROM releases r
        INNER JOIN release_entries re ON re.release_id = r.id
-       WHERE re.entry_id = ? AND r.publish_notify_pending = 1`,
+       INNER JOIN entries e ON e.id = re.entry_id
+       WHERE re.entry_id = ? AND r.app_id = e.app_id AND r.publish_notify_pending = 1`,
     )
     .bind(entryId)
     .all<{ id: number }>();
