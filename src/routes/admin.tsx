@@ -1420,7 +1420,6 @@ admin.get('/customise', async (c) => {
         baseUrl={baseUrl}
         basePath={appBasePath(app)}
         appName={app.name}
-        isDefaultApp={!!app.is_default}
         previewReleases={exampleReleases}
         previewStandaloneEntries={exampleStandalone}
         previewProjectName={settings['project_name'] || app.name}

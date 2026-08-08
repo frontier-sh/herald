@@ -151,8 +151,9 @@ pub.get('/images/:key', async (c) => {
 
 // ─── Embed Script Redirect ──────────────────────────────
 
-// One script serves every app — the widget is pointed at an app by the embed
-// URL it loads, so this stays at the site root.
+// One bundle serves every app — the loader works out which app to show from
+// the URL it was loaded from, so `/embed.js` (default app) and `/tiller/embed.js`
+// (see appPages below) both redirect to the same asset.
 pub.get('/embed.js', (c) => {
   return c.redirect('/assets/embed.js', 301);
 });
@@ -454,6 +455,11 @@ appPages.get('/releases/:version', releasePage);
 appPages.get('/embed', embedPage);
 appPages.get('/embed.json', embedJson);
 appPages.get('/feed.xml', feedXml);
+// The same bundle as `/embed.js`; the slug is only here so the loader can read
+// its own app out of the URL the page author wrote. Registered inside the group
+// so an unknown or reserved slug 404s and the default app's slug redirects to
+// `/embed.js`, exactly like its sibling pages.
+appPages.get('/embed.js', (c) => c.redirect('/assets/embed.js', 301));
 
 pub.route('/:appSlug', appPages);
 

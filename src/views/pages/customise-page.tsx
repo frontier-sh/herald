@@ -14,7 +14,6 @@ interface CustomisePageProps {
   /** URL prefix of the app being customised: '' for the default app, else '/slug'. */
   basePath: string;
   appName: string;
-  isDefaultApp: boolean;
   previewReleases: ReleaseWithEntries[];
   previewStandaloneEntries: EntryWithSection[];
   previewProjectName: string;
@@ -63,7 +62,6 @@ export const CustomisePage: FC<CustomisePageProps> = ({
   baseUrl,
   basePath,
   appName,
-  isDefaultApp,
   previewReleases,
   previewStandaloneEntries,
   previewProjectName,
@@ -86,10 +84,16 @@ export const CustomisePage: FC<CustomisePageProps> = ({
   // Every public URL on this page belongs to the app being customised, which is
   // only the site root when that app is the default one.
   const changelogUrl = `${baseUrl}${basePath}`;
-  const embedCode = `<script src="${baseUrl}/embed.js"></script>`;
-  const embedCodeWithDiv = `<div data-herald-widget></div>\n<script src="${baseUrl}/embed.js"></script>`;
-  const embedCodeWithLimit = `<div data-herald-widget data-herald-limit="5"></div>\n<script src="${baseUrl}/embed.js"></script>`;
-  const embedCodeInline = `<div data-herald-widget data-herald-inline></div>\n<script src="${baseUrl}/embed.js"></script>`;
+  // The loader reads its app out of its own URL, so the script src carries the
+  // app's base path — identical to the old snippet for the default app.
+  const scriptUrl = `${baseUrl}${basePath}/embed.js`;
+  const embedCode = `<script src="${scriptUrl}"></script>`;
+  const embedCodeWithDiv = `<div data-herald-widget></div>\n<script src="${scriptUrl}"></script>`;
+  const embedCodeWithLimit = `<div data-herald-widget data-herald-limit="5"></div>\n<script src="${scriptUrl}"></script>`;
+  const embedCodeInline = `<div data-herald-widget data-herald-inline></div>\n<script src="${scriptUrl}"></script>`;
+  // Naming the app per container is what lets one script tag serve several
+  // changelogs; an empty value pins a container to the default app.
+  const embedCodeWithApp = `<div data-herald-widget data-herald-app="${basePath.slice(1)}"></div>\n<script src="${baseUrl}/embed.js"></script>`;
   const rssUrl = `${baseUrl}${basePath}/feed.xml`;
   const embedUrl = `${baseUrl}${basePath}/embed`;
 
@@ -397,13 +401,7 @@ export const CustomisePage: FC<CustomisePageProps> = ({
 
         {/* Embed Panel */}
         <div class="customise-tab-panel" data-tab-panel="embed" style="display: none;">
-          {!isDefaultApp && (
-            <p class="form-hint">
-              The embed script always renders the default app's changelog. To embed{' '}
-              <strong>{appName}</strong>, point an iframe at <code>{embedUrl}</code>.
-            </p>
-          )}
-          <p class="form-hint">Add the changelog widget to any webpage by pasting the code below. It loads asynchronously and creates an embedded changelog on your site.</p>
+          <p class="form-hint">Add the <strong>{appName}</strong> changelog to any webpage by pasting the code below. It loads asynchronously and creates an embedded changelog on your site.</p>
           <div class="customise-copyable">
             <code id="embed-code" class="customise-code">{embedCode}</code>
             <button type="button" class="btn btn-secondary btn-sm" data-copy-target="embed-code">Copy</button>
@@ -423,6 +421,17 @@ export const CustomisePage: FC<CustomisePageProps> = ({
             <code id="embed-code-inline" class="customise-code">{embedCodeInline}</code>
             <button type="button" class="btn btn-secondary btn-sm" data-copy-target="embed-code-inline">Copy</button>
           </div>
+          <p class="form-hint">To show more than one app's changelog on the same page, keep a single script tag and name the app on each container with <code>data-herald-app</code> — an empty value means the default app:</p>
+          <div class="customise-copyable">
+            <code id="embed-code-app" class="customise-code">{embedCodeWithApp}</code>
+            <button type="button" class="btn btn-secondary btn-sm" data-copy-target="embed-code-app">Copy</button>
+          </div>
+          <p class="form-hint">Or skip the script entirely and point your own iframe at the embed page:</p>
+          <div class="customise-copyable">
+            <code id="embed-url" class="customise-code">{embedUrl}</code>
+            <button type="button" class="btn btn-secondary btn-sm" data-copy-target="embed-url">Copy</button>
+          </div>
+          <p class="form-hint">Prefer a feed? This app's updates are also published as RSS at <code>{rssUrl}</code>.</p>
         </div>
 
         {/* RSS Panel */}
