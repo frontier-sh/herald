@@ -437,12 +437,17 @@ admin.post('/apps/:id', async (c) => {
     await setAppSetting(c.env.DB, id, 'project_name', name);
     await setAppSetting(c.env.DB, id, 'project_description', description);
 
-    if (updated && existing.slug !== updated.slug) {
-      // The app moved: its old URLs must stop serving the cached copy.
-      const baseUrl = requestBaseUrl(c);
-      c.executionCtx.waitUntil(purgePublicCache(baseUrl, existing));
-      c.executionCtx.waitUntil(purgeReleaseDetailPages(c.env.DB, baseUrl, existing));
+    // This route can edit an app other than the one the admin UI is switched to,
+    // and the blanket middleware only purges that current app — so the edited
+    // app is always purged explicitly here. Name and description render on its
+    // public pages, so every page of it is stale, release permalinks included.
+    // When the slug changed the app also moved, so both address forms are purged.
+    const baseUrl = requestBaseUrl(c);
+    c.executionCtx.waitUntil(purgePublicCache(baseUrl, existing));
+    c.executionCtx.waitUntil(purgeReleaseDetailPages(c.env.DB, baseUrl, existing));
+    if (updated && updated.slug !== existing.slug) {
       c.executionCtx.waitUntil(purgePublicCache(baseUrl, updated));
+      c.executionCtx.waitUntil(purgeReleaseDetailPages(c.env.DB, baseUrl, updated));
     }
 
     setFlash(c, 'success', `App "${name}" updated successfully.`);
@@ -470,18 +475,36 @@ admin.post('/apps/:id/default', async (c) => {
     }
 
     const previousDefault = c.get('apps').find((a) => a.is_default);
-    await setDefaultApp(c.env.DB, id);
+    const baseUrl = requestBaseUrl(c);
 
     // Both apps change address: the promoted one moves to the site root and the
-    // demoted one moves under its slug. Purge both, before and after.
-    const baseUrl = requestBaseUrl(c);
-    const swapped: App[] = [{ ...app, is_default: 0 }, { ...app, is_default: 1 }];
-    if (previousDefault) {
-      swapped.push({ ...previousDefault, is_default: 1 }, { ...previousDefault, is_default: 0 });
+    // demoted one moves under its slug. Every cached page of both — including
+    // release permalinks, which the blanket middleware never touches — is stored
+    // under the old URL and must be dropped there as well as at the new one, so
+    // each app is purged in its pre-switch form and again in its post-switch one.
+    const affected = previousDefault && previousDefault.id !== app.id ? [app, previousDefault] : [app];
+    const versions = new Map<number, string[]>();
+    for (const a of affected) {
+      const releases = await listReleases(c.env.DB, a.id, { status: 'published' });
+      versions.set(a.id, releases.map((r) => r.version));
     }
-    for (const variant of swapped) {
-      c.executionCtx.waitUntil(purgePublicCache(baseUrl, variant));
-    }
+
+    const purgeAll = async (variants: App[]) => {
+      for (const variant of variants) {
+        await purgePublicCache(baseUrl, variant);
+        await purgeReleasePages(baseUrl, variant, versions.get(variant.id) ?? []);
+      }
+    };
+
+    // Awaited, not deferred: a purge of the old paths that landed after the
+    // switch could be beaten by a request re-caching them under the new routing.
+    await purgeAll(affected);
+
+    await setDefaultApp(c.env.DB, id);
+
+    const switched = (await Promise.all(affected.map((a) => getApp(c.env.DB, a.id))))
+      .filter((a): a is App => a !== null);
+    c.executionCtx.waitUntil(purgeAll(switched));
 
     setFlash(c, 'success', `"${app.name}" is now served at the site root.`);
   } catch (err) {
@@ -1793,7 +1816,7 @@ admin.post('/images/upload/logo', async (c) => {
     }
 
     const existingKey = await getAppSetting(c.env.DB, app.id, 'logo_image_key');
-    const result = await uploadBrandImage(c.env.IMAGES, c.env.IMAGE_STORE, file, 'logo', existingKey);
+    const result = await uploadBrandImage(c.env.IMAGES, c.env.IMAGE_STORE, app.id, file, 'logo', existingKey);
 
     if ('error' in result) {
       return c.json({ error: result.error }, 400);
@@ -1825,7 +1848,7 @@ admin.post('/images/upload/favicon', async (c) => {
     }
 
     const existingKey = await getAppSetting(c.env.DB, app.id, 'favicon_image_key');
-    const result = await uploadBrandImage(c.env.IMAGES, c.env.IMAGE_STORE, file, 'favicon', existingKey);
+    const result = await uploadBrandImage(c.env.IMAGES, c.env.IMAGE_STORE, app.id, file, 'favicon', existingKey);
 
     if ('error' in result) {
       return c.json({ error: result.error }, 400);
@@ -1860,7 +1883,7 @@ admin.post('/settings/logo', async (c) => {
 
   try {
     const existingKey = await getAppSetting(c.env.DB, app.id, 'logo_image_key');
-    const result = await uploadBrandImage(c.env.IMAGES, c.env.IMAGE_STORE, file, 'logo', existingKey);
+    const result = await uploadBrandImage(c.env.IMAGES, c.env.IMAGE_STORE, app.id, file, 'logo', existingKey);
 
     if ('error' in result) {
       setFlash(c, 'error', result.error);
@@ -1917,7 +1940,7 @@ admin.post('/settings/favicon', async (c) => {
 
   try {
     const existingKey = await getAppSetting(c.env.DB, app.id, 'favicon_image_key');
-    const result = await uploadBrandImage(c.env.IMAGES, c.env.IMAGE_STORE, file, 'favicon', existingKey);
+    const result = await uploadBrandImage(c.env.IMAGES, c.env.IMAGE_STORE, app.id, file, 'favicon', existingKey);
 
     if ('error' in result) {
       setFlash(c, 'error', result.error);

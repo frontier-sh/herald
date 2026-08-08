@@ -110,12 +110,15 @@ export async function appendEntriesToRelease(
   let next = (max?.max_order ?? -1) + 1;
 
   for (const entryId of entryIds) {
+    // The insert re-checks both sides itself, so it can never write a row that
+    // pairs a release with an entry from another app.
     await db
       .prepare(
         `INSERT OR IGNORE INTO release_entries (release_id, entry_id, sort_order)
-         SELECT ?, e.id, ? FROM entries e WHERE e.id = ? AND e.app_id = ?`,
+         SELECT r.id, e.id, ? FROM releases r, entries e
+         WHERE r.id = ? AND r.app_id = ? AND e.id = ? AND e.app_id = ?`,
       )
-      .bind(releaseId, next, entryId, appId)
+      .bind(next, releaseId, appId, entryId, appId)
       .run();
     next += 1;
   }
@@ -137,7 +140,7 @@ export async function getRelease(
     .prepare(
       `SELECT e.*, s.name AS section_name FROM entries e
        INNER JOIN release_entries re ON re.entry_id = e.id
-       LEFT JOIN sections s ON e.section_id = s.id
+       LEFT JOIN sections s ON e.section_id = s.id AND s.app_id = e.app_id
        WHERE re.release_id = ? AND e.app_id = ?
        ORDER BY re.sort_order ASC`,
     )
@@ -170,6 +173,15 @@ export async function updateRelease(
   data: UpdateReleaseData,
   entryIds?: number[],
 ): Promise<ReleaseWithEntries | null> {
+  // Ownership is settled before anything is written: otherwise an id from
+  // another app would still have its release_entries rewritten on the way to the
+  // null (404) return below.
+  const owned = await db
+    .prepare('SELECT id FROM releases WHERE id = ? AND app_id = ?')
+    .bind(id, appId)
+    .first<{ id: number }>();
+  if (!owned) return null;
+
   const fields: string[] = [];
   const params: unknown[] = [];
 
@@ -204,14 +216,17 @@ export async function updateRelease(
       .bind(id, appId)
       .run();
 
-    // Insert new entries — ignoring any id that isn't this app's
+    // Insert new entries — ignoring any id that isn't this app's. Both sides are
+    // re-checked in the statement itself, so the row can only ever join a
+    // release and an entry that both belong to this app.
     for (let i = 0; i < entryIds.length; i++) {
       await db
         .prepare(
           `INSERT INTO release_entries (release_id, entry_id, sort_order)
-           SELECT ?, e.id, ? FROM entries e WHERE e.id = ? AND e.app_id = ?`,
+           SELECT r.id, e.id, ? FROM releases r, entries e
+           WHERE r.id = ? AND r.app_id = ? AND e.id = ? AND e.app_id = ?`,
         )
-        .bind(id, i, entryIds[i], appId)
+        .bind(i, id, appId, entryIds[i], appId)
         .run();
     }
   }

@@ -26,6 +26,16 @@ type PublicEnv = { Bindings: Bindings; Variables: { publicApp: App } };
 
 type PublicHandler = (c: Context<PublicEnv>) => Promise<Response>;
 
+/**
+ * Origin of the current request, derived the same way the embed JSON and RSS
+ * feed derive theirs. Canonical links have to be absolute, and an app is
+ * reachable at exactly one origin per request.
+ */
+function requestOrigin(c: Context<PublicEnv>): string {
+  const url = new URL(c.req.url);
+  return `${url.protocol}//${url.host}`;
+}
+
 // ─── Shared Data Fetching ──────────────────────────────
 
 export async function fetchChangelogData(db: D1Database, appId: number) {
@@ -170,6 +180,7 @@ const changelogPage: PublicHandler = async (c) => {
       theme={theme}
       primaryColor={primaryColor}
       hideAttribution={hideAttribution}
+      canonicalUrl={`${requestOrigin(c)}${basePath || '/'}`}
     >
       <Changelog
         projectName={projectName}
@@ -245,6 +256,7 @@ const releasePage: PublicHandler = async (c) => {
       theme={theme}
       primaryColor={primaryColor}
       hideAttribution={hideAttribution}
+      canonicalUrl={`${requestOrigin(c)}${basePath}/releases/${encodeURIComponent(version)}`}
     >
       <ReleaseDetail
         projectName={projectName}

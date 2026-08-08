@@ -14,6 +14,11 @@ interface PublicLayoutProps {
   theme?: string;
   primaryColor?: string;
   hideAttribution?: boolean;
+  /**
+   * Absolute URL this page should be indexed under. Optional so callers that
+   * don't have a request origin to hand simply render no canonical tag.
+   */
+  canonicalUrl?: string;
 }
 
 export const PublicLayout: FC<PublicLayoutProps> = ({
@@ -27,6 +32,7 @@ export const PublicLayout: FC<PublicLayoutProps> = ({
   theme,
   primaryColor,
   hideAttribution,
+  canonicalUrl,
 }) => {
   const displayName = projectName || 'Changelog';
   const pageTitle = title ? `${title} - ${displayName}` : displayName;
@@ -44,6 +50,7 @@ export const PublicLayout: FC<PublicLayoutProps> = ({
         <meta property="og:title" content={pageTitle} />
         <meta property="og:description" content={metaDescription} />
         <meta property="og:type" content="website" />
+        {canonicalUrl && <link rel="canonical" href={canonicalUrl} />}
         <link
           rel="preconnect"
           href="https://fonts.googleapis.com"

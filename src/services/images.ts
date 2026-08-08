@@ -57,9 +57,20 @@ async function generateContentKey(buffer: ArrayBuffer, contentType: string): Pro
   return `${hex}.${ext}`;
 }
 
-function generateBrandKey(contentType: string, purpose: 'logo' | 'favicon'): string {
+/**
+ * Brand images are one-per-app-per-purpose rather than content-addressed, so the
+ * key carries the app id: without it two apps' logos would overwrite each other
+ * in the shared bucket. The leading `_` is what marks a key as mutable — the
+ * image route serves `_`-prefixed keys with a short cache lifetime instead of
+ * the immutable one used for hash-based content images.
+ */
+export function generateBrandKey(
+  appId: number,
+  contentType: string,
+  purpose: 'logo' | 'favicon',
+): string {
   const ext = RASTER_TYPES.has(contentType) ? 'webp' : ALLOWED_TYPES[contentType];
-  return `_${purpose}.${ext}`;
+  return `_app${appId}_${purpose}.${ext}`;
 }
 
 function arrayBufferToStream(buffer: ArrayBuffer): ReadableStream<Uint8Array> {
@@ -128,6 +139,7 @@ export async function uploadContentImage(
 export async function uploadBrandImage(
   images: ImagesBinding,
   bucket: R2Bucket,
+  appId: number,
   file: File,
   purpose: 'logo' | 'favicon',
   existingKey?: string | null,
@@ -136,9 +148,10 @@ export async function uploadBrandImage(
   if (validation) return validation;
 
   const buffer = await file.arrayBuffer();
-  const key = generateBrandKey(file.type, purpose);
+  const key = generateBrandKey(appId, file.type, purpose);
 
-  // Delete old brand image if key differs
+  // Delete the old brand image whenever the key differs — which also cleans up
+  // the pre-multi-app `_logo.png`-style keys still referenced by the first app.
   if (existingKey && existingKey !== key) {
     await bucket.delete(existingKey);
   }

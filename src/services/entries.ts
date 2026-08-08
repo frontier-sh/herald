@@ -59,6 +59,25 @@ export interface CreateEntryData {
   entry_date?: string;
 }
 
+/**
+ * Sections are per-app, so an incoming section_id is only honoured when it
+ * belongs to the same app as the entry. Anything else (unknown id, or another
+ * app's section) resolves to null rather than erroring — the same lenient shape
+ * the rest of this module uses for ids it can't match.
+ */
+async function resolveSectionId(
+  db: D1Database,
+  appId: number,
+  sectionId: number | null | undefined,
+): Promise<number | null> {
+  if (sectionId === null || sectionId === undefined) return null;
+  const section = await db
+    .prepare('SELECT id FROM sections WHERE id = ? AND app_id = ?')
+    .bind(sectionId, appId)
+    .first<{ id: number }>();
+  return section?.id ?? null;
+}
+
 export async function listEntries(
   db: D1Database,
   appId: number,
@@ -80,7 +99,9 @@ export async function listEntries(
     params.push(filters.section_id);
   }
 
-  let sql = 'SELECT e.*, s.name AS section_name FROM entries e LEFT JOIN sections s ON e.section_id = s.id';
+  // The join is app-scoped as well as id-matched, so a section belonging to
+  // another app can never contribute its name to this app's rows.
+  let sql = 'SELECT e.*, s.name AS section_name FROM entries e LEFT JOIN sections s ON e.section_id = s.id AND s.app_id = e.app_id';
   sql += ' WHERE ' + conditions.join(' AND ');
   sql += ' ORDER BY e.created_at DESC';
 
@@ -95,7 +116,7 @@ export async function getEntry(
   id: number,
 ): Promise<EntryWithSection | null> {
   const result = await db
-    .prepare('SELECT e.*, s.name AS section_name FROM entries e LEFT JOIN sections s ON e.section_id = s.id WHERE e.id = ? AND e.app_id = ?')
+    .prepare('SELECT e.*, s.name AS section_name FROM entries e LEFT JOIN sections s ON e.section_id = s.id AND s.app_id = e.app_id WHERE e.id = ? AND e.app_id = ?')
     .bind(id, appId)
     .first<EntryWithSection>();
   return result ?? null;
@@ -106,6 +127,8 @@ export async function createEntry(
   appId: number,
   data: CreateEntryData,
 ): Promise<EntryWithSection> {
+  const sectionId = await resolveSectionId(db, appId, data.section_id);
+
   const result = await db
     .prepare(
       `INSERT INTO entries (app_id, title, content, category, section_id, source, source_metadata, commit_sha, created_at, entry_date)
@@ -120,7 +143,7 @@ export async function createEntry(
       // than defaulting to a blanket 'added'. If AI is enabled, the queue worker
       // later overrides this with the AI's choice.
       data.category ?? inferCategory(data.title),
-      data.section_id ?? null,
+      sectionId,
       data.source ?? 'manual',
       data.source_metadata ?? null,
       data.commit_sha ?? null,
@@ -162,7 +185,13 @@ export async function updateEntry(
   for (const field of allowedFields) {
     if (field in data) {
       fields.push(`${field} = ?`);
-      params.push(data[field as keyof Entry]);
+      // section_id is the one field that names another table's row, so it is
+      // validated against this app's sections rather than written through.
+      params.push(
+        field === 'section_id'
+          ? await resolveSectionId(db, appId, data.section_id)
+          : data[field as keyof Entry],
+      );
     }
   }
 
@@ -231,7 +260,7 @@ export async function getDraftEntries(
 ): Promise<EntryWithSection[]> {
   const result = await db
     .prepare(
-      "SELECT e.*, s.name AS section_name FROM entries e LEFT JOIN sections s ON e.section_id = s.id WHERE e.app_id = ? AND e.status = 'draft' ORDER BY e.created_at DESC",
+      "SELECT e.*, s.name AS section_name FROM entries e LEFT JOIN sections s ON e.section_id = s.id AND s.app_id = e.app_id WHERE e.app_id = ? AND e.status = 'draft' ORDER BY e.created_at DESC",
     )
     .bind(appId)
     .all<EntryWithSection>();

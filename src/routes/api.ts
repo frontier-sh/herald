@@ -313,9 +313,16 @@ api.put('/releases/:id', async (c) => {
       entryIds?: number[];
     }>();
 
+    // The version is the permalink, so a rename leaves a stale page at the old
+    // URL as well as at the new one — both are purged.
+    const before = await getRelease(c.env.DB, appId, id);
     const { entryIds, ...data } = body;
     const release = await updateRelease(c.env.DB, appId, id, data, entryIds);
     if (!release) return c.json({ error: 'Release not found' }, 404);
+
+    const versions = new Set<string>([release.version]);
+    if (before) versions.add(before.version);
+    c.executionCtx.waitUntil(purgeAppReleasePages(c, appId, [...versions]));
 
     return c.json(release);
   } catch (err) {
@@ -329,8 +336,14 @@ api.delete('/releases/:id', async (c) => {
     const id = parseInt(c.req.param('id'), 10);
     if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
 
+    // Read the version while the row still exists — it names the page to purge.
+    const existing = await getRelease(c.env.DB, appId, id);
     const deleted = await deleteRelease(c.env.DB, appId, id);
     if (!deleted) return c.json({ error: 'Release not found' }, 404);
+
+    if (existing) {
+      c.executionCtx.waitUntil(purgeAppReleasePages(c, appId, [existing.version]));
+    }
 
     return c.json({ success: true });
   } catch (err) {
@@ -350,6 +363,8 @@ api.post('/releases/:id/publish', async (c) => {
     if (before && before.status !== 'published') {
       c.executionCtx.waitUntil(notifyReleasePublishedWhenReady(c.env, id));
     }
+
+    c.executionCtx.waitUntil(purgeAppReleasePages(c, appId, [release.version]));
 
     return c.json(release);
   } catch (err) {
@@ -390,6 +405,14 @@ api.put('/settings', async (c) => {
       if (!PER_APP_SETTING_KEYS.includes(key)) continue;
       await setAppSetting(c.env.DB, appId, key, value);
     }
+
+    // Theme, branding, timezone, grouping and attribution all render on the
+    // release permalinks too, and those are outside the blanket middleware's
+    // four shared paths — so every published release page is purged as well.
+    const releases = await listReleases(c.env.DB, appId, { status: 'published' });
+    c.executionCtx.waitUntil(
+      purgeAppReleasePages(c, appId, releases.map((r) => r.version)),
+    );
 
     const stored = await getAllAppSettings(c.env.DB, appId);
     const settings: Record<string, string> = {};
