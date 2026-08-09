@@ -656,6 +656,14 @@ tbody tr:hover {
   background-color: var(--color-bg);
 }
 
+/* Row-level controls: keeps buttons and single-button forms on one line. */
+.table-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
 /* ============================================
    Alerts & Notifications
    ============================================ */
@@ -4383,31 +4391,6 @@ tbody tr:hover {
 
 .app-switcher-manage:hover {
   color: #FFFFFF;
-}
-
-/* ============================================
-   Apps Page
-   ============================================ */
-.app-badge {
-  margin-left: var(--space-2);
-  vertical-align: middle;
-}
-
-.app-actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: var(--space-2);
-}
-
-.app-form {
-  max-width: 640px;
-}
-
-.app-slug-warning {
-  display: block;
-  margin-top: var(--space-2);
-  color: var(--color-warning);
 }
 
 /* ============================================
