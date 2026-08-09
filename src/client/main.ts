@@ -2,6 +2,11 @@
 // EasyMDE initialization, form handlers, flash messages, delete confirmation
 
 import './styles/main.css';
+// The slug the browser previews has to be byte-for-byte what the server would
+// store, so both sides share one implementation. `apps.ts` has no runtime
+// imports (its D1 helpers are tree-shaken out of this bundle), so pulling it in
+// here costs nothing and can't drag server-only code into the client.
+import { slugify } from '../services/apps';
 
 document.addEventListener('DOMContentLoaded', () => {
   initEasyMDE();
@@ -18,7 +23,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initAiTestButton();
   initDeleteKeyButtons();
   initAppSwitcher();
-  initSlugSuggestion();
+  initSlugFields();
   initDeleteAppButtons();
   initCustomiseTabs();
   initBrandUploaders();
@@ -652,33 +657,51 @@ function initAppSwitcher(): void {
 }
 
 /**
- * Suggest a URL slug from the app name while creating an app. Stops as soon as
- * the slug is edited by hand, and never touches an existing app's slug (that
- * would silently move its public URLs).
+ * App name/slug fields on /admin/apps/new and /admin/apps/:id.
+ *
+ * Two behaviours, both live per keystroke:
+ *  - typing a name fills in the slug, until the slug is edited by hand
+ *    (`data-slug-locked="true"` disables this outright, so an existing app's
+ *    slug is never moved out from under its public URLs);
+ *  - typing a slug rewrites the URL preview (`data-slug-preview` carries the
+ *    base URL, `data-slug-placeholder` the empty-field stand-in), so the
+ *    preview always shows the URL the app would actually be served at.
  */
-function initSlugSuggestion(): void {
+function initSlugFields(): void {
   const source = document.querySelector<HTMLInputElement>('[data-slug-source]');
   const target = document.querySelector<HTMLInputElement>('[data-slug-target]');
-  if (!source || !target) return;
-  if (target.getAttribute('data-slug-locked') === 'true') return;
+  if (!target) return;
 
+  const preview = document.querySelector<HTMLElement>('[data-slug-preview]');
+  const locked = target.getAttribute('data-slug-locked') === 'true';
+
+  // Show the normalised slug \u2014 the field may hold "My App" mid-edit, but the
+  // URL it produces is "my-app".
+  const renderPreview = (): void => {
+    if (!preview) return;
+    const base = preview.getAttribute('data-slug-preview') || '';
+    const placeholder = preview.getAttribute('data-slug-placeholder') || 'your-slug';
+    preview.textContent = `${base}/${slugify(target.value) || placeholder}`;
+  };
+
+  // Auto-fill stays on only while the slug field is untouched (or emptied
+  // again), matching what the server does with a blank slug on submit.
   let auto = target.value === '';
 
   target.addEventListener('input', () => {
     auto = target.value === '';
+    renderPreview();
   });
 
-  source.addEventListener('input', () => {
-    if (!auto) return;
-    target.value = source.value
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .toLowerCase()
-      .trim()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '')
-      .slice(0, 64);
-  });
+  if (source && !locked) {
+    source.addEventListener('input', () => {
+      if (!auto) return;
+      target.value = slugify(source.value);
+      renderPreview();
+    });
+  }
+
+  renderPreview();
 }
 
 /**

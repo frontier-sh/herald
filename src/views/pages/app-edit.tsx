@@ -14,6 +14,9 @@ export const AppEdit: FC<AppEditProps> = ({ app, baseUrl }) => {
   const pageTitle = isEditing ? 'Edit App' : 'New App';
   const action = isEditing ? `/admin/apps/${app!.id}` : '/admin/apps';
   const publicUrl = app ? `${baseUrl}${appBasePath(app)}` : `${baseUrl}/your-slug`;
+  // The preview follows the slug field only where the slug actually shapes the
+  // URL — the default app is served at the site root whatever its slug says.
+  const livePreview = !app?.is_default;
 
   return (
     <div>
@@ -75,7 +78,13 @@ export const AppEdit: FC<AppEditProps> = ({ app, baseUrl }) => {
             <p class="form-hint">
               Lowercase letters, numbers and hyphens. The changelog is served at:
             </p>
-            <code class="settings-code">{publicUrl}</code>
+            <code
+              class="settings-code"
+              data-slug-preview={livePreview ? baseUrl : undefined}
+              data-slug-placeholder={livePreview ? 'your-slug' : undefined}
+            >
+              {publicUrl}
+            </code>
             {app?.is_default && (
               <p class="form-hint">
                 This app is the default, so it is served at the site root and the

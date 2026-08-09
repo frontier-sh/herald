@@ -1445,6 +1445,7 @@ admin.get('/settings', async (c) => {
     <AdminLayout title="Settings" currentPath="/admin/settings" flash={flash} {...chrome(c)}>
       <SettingsPage
         app={app}
+        baseUrl={requestBaseUrl(c)}
         settings={settings}
         globalSettings={globalSettings}
         apiKeys={apiKeys}
