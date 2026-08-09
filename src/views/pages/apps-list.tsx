@@ -73,7 +73,7 @@ export const AppsList: FC<AppsListProps> = ({
                               <input type="hidden" name="app_id" value={String(app.id)} />
                               <input type="hidden" name="redirect_to" value="/admin/apps" />
                               <button type="submit" class="btn btn-secondary btn-sm">
-                                Switch to
+                                Switch
                               </button>
                             </form>
                           )}
