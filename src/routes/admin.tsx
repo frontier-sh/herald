@@ -92,7 +92,8 @@ import { EntriesList } from '../views/pages/entries-list';
 import { EntryEdit } from '../views/pages/entry-edit';
 import { ReleasesList } from '../views/pages/releases-list';
 import { ReleaseEdit } from '../views/pages/release-edit';
-import { SettingsPage } from '../views/pages/settings-page';
+import { AppSettingsPage } from '../views/pages/settings-page';
+import { InstanceSettingsPage } from '../views/pages/instance-settings-page';
 import { CustomisePage } from '../views/pages/customise-page';
 import { GeneratePage } from '../views/pages/generate-page';
 import { AppsList } from '../views/pages/apps-list';
@@ -1477,26 +1478,46 @@ admin.get('/customise', async (c) => {
   );
 });
 
-// ─── Settings Page ──────────────────────────────────────
+// ─── Settings Page (per-app) ────────────────────────────
 
 admin.get('/settings', async (c) => {
   const app = c.get('currentApp');
   const flash = getFlash(c);
   const settings = await getAllAppSettings(c.env.DB, app.id);
-  const globalSettings = await getAllSettings(c.env.DB);
   const apiKeys = await listApiKeys(c.env.DB, app.id);
   const newKey = c.req.query('newKey') || null;
-  const cfg = await getAppConfig(c.env.DB);
 
   return c.html(
     <AdminLayout title="Settings" currentPath="/admin/settings" flash={flash} {...chrome(c)}>
-      <SettingsPage
+      <AppSettingsPage
         app={app}
         baseUrl={requestBaseUrl(c)}
         settings={settings}
-        globalSettings={globalSettings}
         apiKeys={apiKeys}
         newKey={newKey}
+      />
+    </AdminLayout>,
+  );
+});
+
+// ─── Settings Page (instance-wide) ──────────────────────
+
+admin.get('/settings/instance', async (c) => {
+  const app = c.get('currentApp');
+  const flash = getFlash(c);
+  const globalSettings = await getAllSettings(c.env.DB);
+  const cfg = await getAppConfig(c.env.DB);
+
+  return c.html(
+    <AdminLayout
+      title="Instance Settings"
+      currentPath="/admin/settings/instance"
+      flash={flash}
+      {...chrome(c)}
+    >
+      <InstanceSettingsPage
+        appName={app.name}
+        globalSettings={globalSettings}
         hasGithubToken={!!cfg?.source_pat}
         githubRepo={cfg?.allowed_repo ?? null}
       />
@@ -1512,12 +1533,16 @@ admin.post('/settings/source-repo', async (c) => {
   const sourceRepo = ((body['source_repo'] as string) || '').trim();
   const githubPat = ((body['github_pat'] as string) || '').trim();
   const clearPat = body['clear_github_pat'] === 'true';
+  // Two forms post here: the per-app repository field on /admin/settings and
+  // the install-wide token field on /admin/settings/instance. Send each back
+  // to the page it was submitted from.
+  const isAppForm = 'source_repo' in body;
 
   try {
     // The repository is chosen per app; the token that reads it is shared by
     // the whole install (it lives encrypted in github_app_config). The two live
-    // in separate forms on the settings page, so only touch what was submitted.
-    if ('source_repo' in body) {
+    // on separate pages now, so only touch what was submitted.
+    if (isAppForm) {
       await setAppSetting(c.env.DB, app.id, 'source_repo', sourceRepo);
     }
     // The token is encrypted at rest and never sent back to the client, so the
@@ -1535,7 +1560,7 @@ admin.post('/settings/source-repo', async (c) => {
     setFlash(
       c,
       'success',
-      !('source_repo' in body)
+      !isAppForm
         ? 'GitHub token saved.'
         : sourceRepo
           ? `Source repository set to ${sourceRepo}.`
@@ -1545,7 +1570,7 @@ admin.post('/settings/source-repo', async (c) => {
     setFlash(c, 'error', 'Failed to save source repository.');
   }
 
-  return c.redirect('/admin/settings');
+  return c.redirect(isAppForm ? '/admin/settings' : '/admin/settings/instance');
 });
 
 // ─── Settings: General ──────────────────────────────────
@@ -1771,12 +1796,16 @@ admin.post('/settings/ai', async (c) => {
     ? (body['ai_personality'] as string)
     : 'neutral';
 
+  // Whether AI runs, and how it writes, is decided per app (/admin/settings);
+  // the model itself is an instance-wide choice, one Workers AI binding for the
+  // whole install (/admin/settings/instance). Both forms post here, and only
+  // the instance one submits `ai_model` — an unchecked per-app toggle sends
+  // nothing at all, and must not be read as "disable the model". `ai_scope` is
+  // still honoured for callers built against the older single-page form.
+  const isInstanceForm = 'ai_model' in body || body['ai_scope'] === 'instance';
+
   try {
-    // Whether AI runs, and how it writes, is decided per app; the model itself
-    // is an instance-wide choice (one Workers AI binding for the whole install).
-    // The two live in separate forms, so `ai_scope` says which one submitted —
-    // an unchecked toggle sends nothing, and must not be read as "disable".
-    if (body['ai_scope'] === 'instance') {
+    if (isInstanceForm) {
       await setSetting(c.env.DB, 'ai_model', aiModel);
     } else {
       await setAppSetting(c.env.DB, app.id, 'ai_enabled', aiEnabled);
@@ -1787,7 +1816,7 @@ admin.post('/settings/ai', async (c) => {
     setFlash(c, 'error', 'Failed to save AI settings.');
   }
 
-  return c.redirect('/admin/settings');
+  return c.redirect(isInstanceForm ? '/admin/settings/instance' : '/admin/settings');
 });
 
 // ─── Settings: AI Test ──────────────────────────────────
@@ -1795,7 +1824,10 @@ admin.post('/settings/ai', async (c) => {
 admin.post('/settings/ai/test', async (c) => {
   try {
     const body = await c.req.json().catch(() => ({})) as { model?: string; personality?: string };
-    const model = resolveModelId(body.model);
+    // The Test AI button sits with the per-app AI settings, where the model
+    // picker isn't shown — fall back to the install-wide model on file so the
+    // test exercises what this app actually writes with.
+    const model = resolveModelId(body.model || (await getSetting(c.env.DB, 'ai_model')));
     const personality = body.personality || 'neutral';
 
     const personalityInstructions: Record<string, string> = {

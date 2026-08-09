@@ -547,10 +547,9 @@ function initAiTestButton(): void {
     const resultOutput = document.getElementById('ai-test-output');
     if (!resultContainer || !resultOutput) return;
 
-    // Read current dropdown values
-    const modelSelect = document.getElementById('ai_model') as HTMLSelectElement | null;
+    // Only the personality is picked on this page — the model is an
+    // instance-wide setting, so the server uses the one it has on file.
     const personalitySelect = document.getElementById('ai_personality') as HTMLSelectElement | null;
-    const model = modelSelect?.value || '';
     const personality = personalitySelect?.value || 'neutral';
 
     // Show loading state
@@ -565,7 +564,7 @@ function initAiTestButton(): void {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ model, personality }),
+        body: JSON.stringify({ personality }),
       });
 
       const data = await response.json() as { success: boolean; result?: string; error?: string };

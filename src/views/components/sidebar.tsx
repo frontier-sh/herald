@@ -80,11 +80,30 @@ export const Sidebar: FC<SidebarProps> = ({
   currentApp,
   apps = [],
 }) => {
-  const isActive = (href: string): boolean => {
+  // Every destination in the nav below, so a nested one (/admin/settings/instance)
+  // can win over its parent (/admin/settings) instead of lighting up both.
+  const navHrefs = [
+    '/admin',
+    '/admin/entries',
+    '/admin/generate',
+    '/admin/releases',
+    '/admin/customise',
+    '/admin/apps',
+    '/admin/settings',
+    '/admin/settings/instance',
+  ];
+
+  const matches = (href: string): boolean => {
     if (href === '/admin') {
       return currentPath === '/admin' || currentPath === '/admin/';
     }
-    return currentPath?.startsWith(href) ?? false;
+    return currentPath === href || currentPath.startsWith(`${href}/`);
+  };
+
+  const isActive = (href: string): boolean => {
+    if (!matches(href)) return false;
+    // A longer matching entry is the more specific destination — defer to it.
+    return !navHrefs.some((other) => other.length > href.length && matches(other));
   };
 
   // The public changelog of the current app, not necessarily the site root.
@@ -159,6 +178,14 @@ export const Sidebar: FC<SidebarProps> = ({
             <circle cx="4.5" cy="12" r="1.5" />
           </svg>
           Settings
+        </a>
+        <a href="/admin/settings/instance" class={isActive('/admin/settings/instance') ? 'active' : ''}>
+          <svg class="nav-icon" width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="1.5" y="2" width="13" height="5" rx="1.25" />
+            <rect x="1.5" y="9" width="13" height="5" rx="1.25" />
+            <path d="M4 4.5h.01M4 11.5h.01" />
+          </svg>
+          Instance
         </a>
       </nav>
       <div class="sidebar-footer">

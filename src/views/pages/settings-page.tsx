@@ -3,42 +3,34 @@ import type { App, ApiKey } from '../../db/schema';
 import { SettingsSection } from '../components/settings-form';
 import { ScopeBanner } from '../components/scope-banner';
 import { SlackSettings } from '../components/slack-settings';
-import { AI_MODELS, DEFAULT_AI_MODEL, resolveModelId } from '../../services/models';
 import { formatInZone } from '../../services/datetime';
 import { appBasePath } from '../../services/apps';
 
-interface SettingsPageProps {
-  /** The app every per-app setting on this page belongs to. */
+interface AppSettingsPageProps {
+  /** The app every setting on this page belongs to. */
   app: App;
   /** Origin of the current request, used to show the app's public URL. */
   baseUrl: string;
   /** The current app's settings (app_settings). */
   settings: Record<string, string>;
-  /** Install-wide settings (settings) — currently just the AI model. */
-  globalSettings: Record<string, string>;
   apiKeys: Omit<ApiKey, 'key_hash'>[];
   newKey?: string | null;
-  // Whether a source PAT is stored. The token itself is encrypted and never
-  // sent to the client, so the page only knows that one exists.
-  hasGithubToken?: boolean;
-  /** Repository that gates admin sign-in (the GitHub App's allowed repo). */
-  githubRepo?: string | null;
 }
 
-export const SettingsPage: FC<SettingsPageProps> = ({
+/**
+ * Settings that belong to a single app. Install-wide settings live on their
+ * own page, {@link ../pages/instance-settings-page InstanceSettingsPage}.
+ */
+export const AppSettingsPage: FC<AppSettingsPageProps> = ({
   app,
   baseUrl,
   settings,
-  globalSettings,
   apiKeys,
   newKey,
-  hasGithubToken = false,
-  githubRepo = null,
 }) => {
   const sourceRepo = settings['source_repo'] || '';
   const autoPublish = settings['auto_publish'] === 'true';
   const aiEnabled = settings['ai_enabled'] === 'true';
-  const aiModel = resolveModelId(globalSettings['ai_model']);
   const aiPersonality = settings['ai_personality'] || 'neutral';
   const timezone = settings['timezone'] || 'UTC';
   const slackConnected = (settings['slack_webhook_url'] ?? '') !== '';
@@ -137,7 +129,7 @@ export const SettingsPage: FC<SettingsPageProps> = ({
               />
               <span class="settings-toggle-hint">
                 Each app reads its own repository. The token used to read it is shared
-                by the whole install — see GitHub access below.
+                by the whole install — see <a href="/admin/settings/instance">Instance settings</a>.
               </span>
             </div>
             <div class="settings-section-footer">
@@ -186,9 +178,6 @@ export const SettingsPage: FC<SettingsPageProps> = ({
           description="Use Workers AI to rewrite this app's entries as they arrive."
         >
           <form method="post" action="/admin/settings/ai">
-            {/* Tells the handler this submission owns the per-app AI fields; the
-                instance model form posts to the same endpoint. */}
-            <input type="hidden" name="ai_scope" value="app" />
             <div class="settings-toggle-row mb-4">
               <div class="settings-toggle-info">
                 <span class="settings-toggle-label">Enable AI features</span>
@@ -219,7 +208,8 @@ export const SettingsPage: FC<SettingsPageProps> = ({
                 </select>
                 <span class="settings-toggle-hint">
                   The tone AI writes this app's entries in. The model itself is chosen
-                  once for the whole install, under Instance below.
+                  once for the whole install, under{' '}
+                  <a href="/admin/settings/instance">Instance settings</a>.
                 </span>
               </div>
 
@@ -352,108 +342,6 @@ export const SettingsPage: FC<SettingsPageProps> = ({
           />
         </SettingsSection>
       </div>
-
-      <ScopeBanner
-        variant="instance"
-        badge="All apps"
-        title="Instance settings — applied to every app on this Herald install"
-        note={`Changing anything below affects all changelogs, ${app.name} included.`}
-      />
-
-      {/* GitHub access */}
-      <SettingsSection
-        title="GitHub access"
-        description="The GitHub App that gates admin sign-in, and the token Herald uses to read commits."
-      >
-        <div class="form-group">
-          <label class="form-label">Admin repository</label>
-          <p class="form-hint">
-            {githubRepo
-              ? 'Anyone with access to this repository can sign in to the Herald admin.'
-              : 'No repository connected yet — run setup to connect the GitHub App.'}
-          </p>
-          <code class="settings-code">{githubRepo || 'Not connected'}</code>
-        </div>
-
-        <form method="post" action="/admin/settings/source-repo">
-          <div class="form-group">
-            <label for="github_pat" class="form-label">GitHub token</label>
-            <input
-              type="password"
-              id="github_pat"
-              name="github_pat"
-              class="form-input"
-              placeholder={hasGithubToken ? '•••••••• (leave blank to keep current)' : 'github_pat_… or ghp_…'}
-              autocomplete="off"
-            />
-            <span class="settings-toggle-hint">
-              A fine-grained token with read-only <strong>Contents</strong>{' '}
-              access to the repositories your apps generate from, or a classic
-              token with the <code>repo</code> scope.{' '}
-              {hasGithubToken
-                ? 'A token is currently saved.'
-                : 'No token saved yet.'}
-            </span>
-            {hasGithubToken && (
-              <label class="settings-toggle-hint" style="display:flex; align-items:center; gap:0.5rem; margin-top:0.5rem; cursor:pointer;">
-                <input type="checkbox" name="clear_github_pat" value="true" />
-                Remove the saved token
-              </label>
-            )}
-          </div>
-          <div class="settings-section-footer">
-            <button type="submit" class="btn btn-primary">Save</button>
-          </div>
-        </form>
-      </SettingsSection>
-
-      {/* AI model */}
-      <SettingsSection
-        title="AI model"
-        description="The Workers AI model every app on this install writes with."
-      >
-        <form method="post" action="/admin/settings/ai">
-          <input type="hidden" name="ai_scope" value="instance" />
-          <div class="form-group">
-            <label for="ai_model" class="form-label">
-              Model
-            </label>
-            <select id="ai_model" name="ai_model" class="form-select">
-              {AI_MODELS.map((m) => (
-                <option
-                  value={m.id}
-                  selected={aiModel === m.id}
-                >
-                  {m.label}{m.id === DEFAULT_AI_MODEL.id ? ' (Default)' : ''}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div class="settings-section-footer">
-            <button type="submit" class="btn btn-primary">Save</button>
-          </div>
-        </form>
-      </SettingsSection>
-
-      {/* Danger Zone */}
-      <SettingsSection
-        title="Danger Zone"
-        description="Irreversible and destructive actions."
-      >
-        <div class="danger-zone-content">
-          <div class="danger-zone-item">
-            <div>
-              <strong>Reset all data</strong>
-              <p class="text-sm text-muted">
-                Delete all entries, releases, and settings. This cannot be undone.
-              </p>
-            </div>
-            <button type="button" class="btn btn-danger" disabled>
-              Reset Data
-            </button>
-          </div>
-        </div>
-      </SettingsSection>
     </div>
   );
 };
