@@ -67,8 +67,15 @@ export const AppsList: FC<AppsListProps> = ({
                       </td>
                       <td class="text-muted text-sm">{entryCounts[app.id] ?? 0}</td>
                       <td class="text-right">
+                        {/* Every row renders all four action slots in the same
+                            order; inapplicable ones become invisible placeholders
+                            so identical actions align vertically across rows. */}
                         <div class="table-actions">
-                          {app.id === currentAppId ? null : (
+                          {app.id === currentAppId ? (
+                            <span class="btn btn-secondary btn-sm table-action-placeholder">
+                              Switch
+                            </span>
+                          ) : (
                             <form method="post" action="/admin/apps/switch" style="margin: 0;">
                               <input type="hidden" name="app_id" value={String(app.id)} />
                               <input type="hidden" name="redirect_to" value="/admin/apps" />
@@ -77,7 +84,11 @@ export const AppsList: FC<AppsListProps> = ({
                               </button>
                             </form>
                           )}
-                          {app.is_default ? null : (
+                          {app.is_default ? (
+                            <span class="btn btn-ghost btn-sm table-action-placeholder">
+                              Make default
+                            </span>
+                          ) : (
                             <form
                               method="post"
                               action={`/admin/apps/${app.id}/default`}
@@ -91,7 +102,11 @@ export const AppsList: FC<AppsListProps> = ({
                           <a href={`/admin/apps/${app.id}`} class="btn btn-ghost btn-sm">
                             Edit
                           </a>
-                          {app.is_default ? null : (
+                          {app.is_default ? (
+                            <span class="btn btn-danger btn-sm table-action-placeholder">
+                              Delete
+                            </span>
+                          ) : (
                             <button
                               type="button"
                               class="btn btn-danger btn-sm"

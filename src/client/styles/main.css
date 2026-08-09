@@ -664,6 +664,12 @@ tbody tr:hover {
   gap: var(--space-2);
 }
 
+/* Keeps a slot's width when its action doesn't apply to the row, so the
+   same action lands in the same place in every row. */
+.table-action-placeholder {
+  visibility: hidden;
+}
+
 /* ============================================
    Alerts & Notifications
    ============================================ */
@@ -4468,9 +4474,7 @@ tbody tr:hover {
 }
 
 .scope-group {
-  padding-left: var(--space-5);
   margin-bottom: var(--space-10);
-  border-left: 3px solid color-mix(in srgb, var(--color-primary) 30%, var(--color-bg));
 }
 
 .scope-group > .settings-section:last-child {
@@ -4478,10 +4482,6 @@ tbody tr:hover {
 }
 
 @media (max-width: 768px) {
-  .scope-group {
-    padding-left: var(--space-3);
-  }
-
   .scope-banner-url {
     margin-left: 0;
   }
