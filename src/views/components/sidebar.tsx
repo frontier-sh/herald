@@ -177,7 +177,7 @@ export const Sidebar: FC<SidebarProps> = ({
             <circle cx="11.5" cy="8" r="1.5" />
             <circle cx="4.5" cy="12" r="1.5" />
           </svg>
-          Settings
+          App Settings
         </a>
         <a href="/admin/settings/instance" class={isActive('/admin/settings/instance') ? 'active' : ''}>
           <svg class="nav-icon" width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round">
@@ -185,7 +185,7 @@ export const Sidebar: FC<SidebarProps> = ({
             <rect x="1.5" y="9" width="13" height="5" rx="1.25" />
             <path d="M4 4.5h.01M4 11.5h.01" />
           </svg>
-          Instance
+          Herald Settings
         </a>
       </nav>
       <div class="sidebar-footer">
