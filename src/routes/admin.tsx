@@ -96,7 +96,7 @@ import { SettingsPage } from '../views/pages/settings-page';
 import { CustomisePage } from '../views/pages/customise-page';
 import { GeneratePage } from '../views/pages/generate-page';
 import { AppsList } from '../views/pages/apps-list';
-import { AppEdit } from '../views/pages/app-edit';
+import { AppEdit, type AppFormValues } from '../views/pages/app-edit';
 import onboarding from './onboarding';
 
 type AdminEnv = {
@@ -162,6 +162,41 @@ function chrome(c: Context<AdminEnv>) {
 function requestBaseUrl(c: Context<AdminEnv>): string {
   const url = new URL(c.req.url);
   return c.env.BASE_URL || `${url.protocol}//${url.host}`;
+}
+
+/**
+ * An unticked checkbox is simply absent from the body, so presence is the
+ * signal. Accepts "true" (what Herald's forms post) and the browser default
+ * "on" alike.
+ */
+function isChecked(value: unknown): boolean {
+  return typeof value === 'string' && value !== '' && value !== 'false';
+}
+
+/**
+ * Re-render the app form in place after a rejected submit.
+ *
+ * Every other admin form redirects back to its GET route with a flash, which
+ * for this form meant the user was returned to an empty one and lost what they
+ * had typed. Rendering here instead keeps the submitted values in the fields;
+ * the error still arrives in the usual flash banner, in its usual position, so
+ * it is indistinguishable from the redirect version to look at. Status stays
+ * 200 — this is the form again, not an error page.
+ */
+function renderAppForm(
+  c: Context<AdminEnv>,
+  opts: { app?: App; values: AppFormValues; error: string },
+) {
+  return c.html(
+    <AdminLayout
+      title={opts.app ? `Edit: ${opts.app.name}` : 'New App'}
+      currentPath="/admin/apps"
+      flash={{ type: 'error', message: opts.error }}
+      {...chrome(c)}
+    >
+      <AppEdit app={opts.app} baseUrl={requestBaseUrl(c)} values={opts.values} />
+    </AdminLayout>,
+  );
 }
 
 const admin = new Hono<AdminEnv>();
@@ -327,23 +362,27 @@ admin.post('/apps', async (c) => {
   const body = await c.req.parseBody();
   const name = ((body['name'] as string) || '').trim();
   const description = ((body['description'] as string) || '').trim();
-  const slug = (((body['slug'] as string) || '').trim() || slugify(name)).toLowerCase();
-  const switchToNew = body['switch_to'] === 'true';
+  const rawSlug = ((body['slug'] as string) || '').trim();
+  const slug = (rawSlug || slugify(name)).toLowerCase();
+  const switchToNew = isChecked(body['switch_to']);
 
-  if (!name) {
-    setFlash(c, 'error', 'App name is required.');
-    return c.redirect('/admin/apps/new');
-  }
+  // Rejected submits come straight back as the same form with everything the
+  // user typed still in it — never a redirect to an empty one.
+  const values: AppFormValues = {
+    name,
+    slug: rawSlug,
+    description,
+    switchTo: switchToNew,
+  };
+  const reject = (message: string) => renderAppForm(c, { values, error: message });
+
+  if (!name) return reject('App name is required.');
 
   const slugError = validateSlug(slug);
-  if (slugError) {
-    setFlash(c, 'error', slugError + '.');
-    return c.redirect('/admin/apps/new');
-  }
+  if (slugError) return reject(slugError + '.');
 
   if (await getAppBySlug(c.env.DB, slug)) {
-    setFlash(c, 'error', `The URL slug "${slug}" is already taken.`);
-    return c.redirect('/admin/apps/new');
+    return reject(`The URL slug "${slug}" is already taken.`);
   }
 
   try {
@@ -364,8 +403,9 @@ admin.post('/apps', async (c) => {
     setFlash(c, 'success', `App "${name}" created at /${app.slug}.`);
     return c.redirect('/admin/apps');
   } catch (err) {
-    setFlash(c, 'error', 'Failed to create app.');
-    return c.redirect('/admin/apps/new');
+    // Most likely the UNIQUE constraint on apps.slug losing a race with the
+    // check above; either way the form comes back filled in.
+    return reject('Failed to create app. Please check the details and try again.');
   }
 });
 
@@ -404,7 +444,8 @@ admin.post('/apps/:id', async (c) => {
   const body = await c.req.parseBody();
   const name = ((body['name'] as string) || '').trim();
   const description = ((body['description'] as string) || '').trim();
-  const slug = (((body['slug'] as string) || '').trim() || slugify(name)).toLowerCase();
+  const rawSlug = ((body['slug'] as string) || '').trim();
+  const slug = (rawSlug || slugify(name)).toLowerCase();
 
   const existing = await getApp(c.env.DB, id);
   if (!existing) {
@@ -412,21 +453,25 @@ admin.post('/apps/:id', async (c) => {
     return c.redirect('/admin/apps');
   }
 
-  if (!name) {
-    setFlash(c, 'error', 'App name is required.');
-    return c.redirect(`/admin/apps/${id}`);
-  }
+  // As on create: a rejected edit re-renders this app's form with the submitted
+  // values, so nothing typed is lost.
+  const values: AppFormValues = {
+    name,
+    slug: rawSlug,
+    description,
+    switchTo: false,
+  };
+  const reject = (message: string) =>
+    renderAppForm(c, { app: existing, values, error: message });
+
+  if (!name) return reject('App name is required.');
 
   const slugError = validateSlug(slug);
-  if (slugError) {
-    setFlash(c, 'error', slugError + '.');
-    return c.redirect(`/admin/apps/${id}`);
-  }
+  if (slugError) return reject(slugError + '.');
 
   const clash = await getAppBySlug(c.env.DB, slug);
   if (clash && clash.id !== id) {
-    setFlash(c, 'error', `The URL slug "${slug}" is already taken.`);
-    return c.redirect(`/admin/apps/${id}`);
+    return reject(`The URL slug "${slug}" is already taken.`);
   }
 
   try {
@@ -452,7 +497,9 @@ admin.post('/apps/:id', async (c) => {
 
     setFlash(c, 'success', `App "${name}" updated successfully.`);
   } catch (err) {
-    setFlash(c, 'error', 'Failed to update app.');
+    // Most likely the UNIQUE constraint on apps.slug losing a race with the
+    // clash check above; either way the form comes back filled in.
+    return reject('Failed to update app. Please check the details and try again.');
   }
 
   return c.redirect(`/admin/apps/${id}`);

@@ -40,6 +40,37 @@ export function slugify(name: string): string {
     .replace(/-+$/, '');
 }
 
+/**
+ * Lenient slug normalisation for a slug field being typed into, shared by the
+ * browser so the field self-corrects per keystroke.
+ *
+ * Deliberately *not* slugify(): slugify strips trailing hyphens, so the space
+ * in "my test" would collapse "my-" back to "my" and the separator could never
+ * survive to the next word. This keeps a single trailing hyphen so a
+ * word boundary can be typed; slugify still runs on blur and on the server.
+ *
+ * Unlike slugify, characters that are neither separators nor slug-safe are
+ * dropped rather than turned into hyphens, so punctuation typed mid-word does
+ * not push a separator into the field.
+ */
+export function liveSlugInput(value: string): string {
+  return (
+    value
+      // Same accent handling as slugify, so "Café" types as "cafe".
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      // Whitespace and underscores are what people type for a word break.
+      .replace(/[\s_]+/g, '-')
+      .replace(/[^a-z0-9-]+/g, '')
+      .replace(/-{2,}/g, '-')
+      // A leading hyphen can never be meaningful, but a trailing one is a
+      // word break in progress.
+      .replace(/^-+/, '')
+      .slice(0, SLUG_MAX_LENGTH)
+  );
+}
+
 /** Returns an error message for display, or null when the slug is usable. */
 export function validateSlug(slug: string): string | null {
   if (!slug) return 'URL slug is required';

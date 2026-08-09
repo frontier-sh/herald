@@ -1,19 +1,43 @@
 import type { FC } from 'hono/jsx';
 import type { App } from '../../db/schema';
 import { SettingsSection } from '../components/settings-form';
-import { appBasePath } from '../../services/apps';
+import { slugify } from '../../services/apps';
+
+/**
+ * Values as they were submitted, echoed back when a submit is rejected so the
+ * user never loses what they typed. Every field is the raw request value, not a
+ * normalised one — they are looking at their own input and fixing it.
+ */
+export interface AppFormValues {
+  name: string;
+  slug: string;
+  description: string;
+  /** Create form only: state of the "switch to this app" toggle. */
+  switchTo: boolean;
+}
 
 interface AppEditProps {
   /** Omitted when creating a new app. */
   app?: App;
   baseUrl: string;
+  /** Present only on a re-render after a failed submit. */
+  values?: AppFormValues;
 }
 
-export const AppEdit: FC<AppEditProps> = ({ app, baseUrl }) => {
+export const AppEdit: FC<AppEditProps> = ({ app, baseUrl, values }) => {
   const isEditing = !!app;
+  const nameValue = values ? values.name : (app?.name ?? '');
+  const slugValue = values ? values.slug : (app?.slug ?? '');
+  const descriptionValue = values ? values.description : (app?.description ?? '');
+  const switchToChecked = values ? values.switchTo : true;
   const pageTitle = isEditing ? 'Edit App' : 'New App';
   const action = isEditing ? `/admin/apps/${app!.id}` : '/admin/apps';
-  const publicUrl = app ? `${baseUrl}${appBasePath(app)}` : `${baseUrl}/your-slug`;
+  // Preview the slug as submitted after a failed submit, so it agrees with the
+  // field the user is looking at rather than with the stored app.
+  const previewSlug = values ? slugify(values.slug) : (app?.slug ?? '');
+  const publicUrl = app?.is_default
+    ? baseUrl
+    : `${baseUrl}/${previewSlug || 'your-slug'}`;
   // The preview follows the slug field only where the slug actually shapes the
   // URL — the default app is served at the site root whatever its slug says.
   const livePreview = !app?.is_default;
@@ -49,7 +73,7 @@ export const AppEdit: FC<AppEditProps> = ({ app, baseUrl }) => {
               name="name"
               class="form-input"
               placeholder="My Product"
-              value={app?.name ?? ''}
+              value={nameValue}
               data-slug-source
               required
             />
@@ -68,7 +92,7 @@ export const AppEdit: FC<AppEditProps> = ({ app, baseUrl }) => {
               name="slug"
               class="form-input"
               placeholder="my-product"
-              value={app?.slug ?? ''}
+              value={slugValue}
               autocomplete="off"
               autocapitalize="off"
               spellcheck={false}
@@ -111,7 +135,7 @@ export const AppEdit: FC<AppEditProps> = ({ app, baseUrl }) => {
               rows={3}
               placeholder="A brief description of this product..."
             >
-              {app?.description ?? ''}
+              {descriptionValue}
             </textarea>
             <p class="form-hint">Optional. Shown on the public changelog.</p>
           </div>
@@ -125,7 +149,12 @@ export const AppEdit: FC<AppEditProps> = ({ app, baseUrl }) => {
                 </span>
               </div>
               <label class="toggle-switch">
-                <input type="checkbox" name="switch_to" value="true" checked />
+                <input
+                  type="checkbox"
+                  name="switch_to"
+                  value="true"
+                  checked={switchToChecked}
+                />
                 <span class="toggle-slider"></span>
               </label>
             </div>

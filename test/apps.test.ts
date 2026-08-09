@@ -11,6 +11,7 @@ import assert from 'node:assert/strict';
 import {
   RESERVED_SLUGS,
   slugify,
+  liveSlugInput,
   validateSlug,
   appBasePath,
 } from '../src/services/apps.ts';
@@ -74,6 +75,59 @@ test('slugify can produce an empty or reserved slug, which validation catches', 
   assert.equal(slugify('!!!'), '');
   assert.notEqual(validateSlug(slugify('!!!')), null);
   assert.notEqual(validateSlug(slugify('Admin')), null);
+});
+
+test('liveSlugInput hyphenates a phrase as it is typed', () => {
+  assert.equal(liveSlugInput('my test app'), 'my-test-app');
+  assert.equal(liveSlugInput('My Test App'), 'my-test-app');
+  assert.equal(liveSlugInput('my_test_app'), 'my-test-app');
+});
+
+test('liveSlugInput keeps a trailing hyphen so a word break can be typed', () => {
+  // The whole point of the lenient transform: slugify would give "my-test"
+  // here, and the separator could never survive to the next word.
+  assert.equal(liveSlugInput('My Test '), 'my-test-');
+  assert.equal(liveSlugInput('my-test-a'), 'my-test-a');
+});
+
+test('liveSlugInput strips accents the same way slugify does', () => {
+  assert.equal(liveSlugInput('Café X'), 'cafe-x');
+  assert.equal(liveSlugInput('Ünïcode'), 'unicode');
+});
+
+test('liveSlugInput collapses consecutive hyphens', () => {
+  assert.equal(liveSlugInput('my--test'), 'my-test');
+  assert.equal(liveSlugInput('my - test'), 'my-test');
+  assert.equal(liveSlugInput('my   test'), 'my-test');
+  // ...including the pair a leading hyphen would otherwise leave behind.
+  assert.equal(liveSlugInput('--my-test'), 'my-test');
+});
+
+test('liveSlugInput drops characters that are not slug-safe', () => {
+  assert.equal(liveSlugInput('app!'), 'app');
+  assert.equal(liveSlugInput('app/sub'), 'appsub');
+  assert.equal(liveSlugInput('!!!'), '');
+});
+
+test('liveSlugInput enforces the 64-character cap', () => {
+  assert.equal(liveSlugInput('x'.repeat(100)).length, 64);
+  assert.equal(liveSlugInput('a b '.repeat(40)).length, 64);
+});
+
+test('blurring applies the strict slugify, which drops the trailing hyphen', () => {
+  assert.equal(slugify('my-test-'), 'my-test');
+  assert.equal(slugify(liveSlugInput('My Test ')), 'my-test');
+});
+
+test('liveSlugInput output only ever needs the trailing hyphen trimmed', () => {
+  for (const typed of ['my test app', 'My Test ', 'Café X', 'a b c ', 'x'.repeat(100)]) {
+    const live = liveSlugInput(typed);
+    assert.equal(
+      slugify(live),
+      live.replace(/-+$/, ''),
+      `slugify should agree with liveSlugInput for "${typed}"`,
+    );
+  }
 });
 
 test('appBasePath is empty for the default app and /slug otherwise', () => {

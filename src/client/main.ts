@@ -6,7 +6,7 @@ import './styles/main.css';
 // store, so both sides share one implementation. `apps.ts` has no runtime
 // imports (its D1 helpers are tree-shaken out of this bundle), so pulling it in
 // here costs nothing and can't drag server-only code into the client.
-import { slugify } from '../services/apps';
+import { slugify, liveSlugInput } from '../services/apps';
 
 document.addEventListener('DOMContentLoaded', () => {
   initEasyMDE();
@@ -659,10 +659,12 @@ function initAppSwitcher(): void {
 /**
  * App name/slug fields on /admin/apps/new and /admin/apps/:id.
  *
- * Two behaviours, both live per keystroke:
+ * Three behaviours, all live per keystroke:
  *  - typing a name fills in the slug, until the slug is edited by hand
  *    (`data-slug-locked="true"` disables this outright, so an existing app's
  *    slug is never moved out from under its public URLs);
+ *  - typing in the slug field rewrites the field itself, so "my test app"
+ *    becomes "my-test-app" as it is typed rather than only in the preview;
  *  - typing a slug rewrites the URL preview (`data-slug-preview` carries the
  *    base URL, `data-slug-placeholder` the empty-field stand-in), so the
  *    preview always shows the URL the app would actually be served at.
@@ -684,12 +686,38 @@ function initSlugFields(): void {
     preview.textContent = `${base}/${slugify(target.value) || placeholder}`;
   };
 
+  /**
+   * Rewrite the field to `next`, keeping the caret where the user left it.
+   * Characters are only ever removed or substituted 1:1, so shifting the caret
+   * by the length delta lands it on the same character it was on before.
+   */
+  const setValue = (next: string): void => {
+    const before = target.value;
+    if (next === before) return;
+    const caret = target.selectionStart;
+    target.value = next;
+    if (caret === null) return;
+    const moved = caret - (before.length - next.length);
+    const clamped = Math.max(0, Math.min(next.length, moved));
+    target.setSelectionRange(clamped, clamped);
+  };
+
   // Auto-fill stays on only while the slug field is untouched (or emptied
   // again), matching what the server does with a blank slug on submit.
   let auto = target.value === '';
 
   target.addEventListener('input', () => {
+    // Lenient while typing: liveSlugInput keeps the trailing hyphen that a
+    // just-typed space produced, which full slugify would eat — leaving the
+    // separator unable to survive to the next word.
+    setValue(liveSlugInput(target.value));
     auto = target.value === '';
+    renderPreview();
+  });
+
+  // Once the field is left alone, settle on exactly what the server will store.
+  target.addEventListener('blur', () => {
+    setValue(slugify(target.value));
     renderPreview();
   });
 
