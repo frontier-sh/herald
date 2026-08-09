@@ -27,6 +27,9 @@ app.use('/auth/*', requireSetup);
 app.route('/auth', auth);
 app.route('/admin', admin);
 app.route('/api', api);
+// Public routes last: they end in a `/:appSlug` group (one changelog per app),
+// which must never shadow the mounts above or the site-root pages of the
+// default app.
 app.route('/', pub);
 
 export default {

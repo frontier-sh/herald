@@ -6,7 +6,8 @@ import {
   claimReleaseNotificationIfReady,
   releaseIdsAwaitingNotifyForEntry,
 } from './releases';
-import { getSetting } from './settings';
+import { getSetting, getAppSetting } from './settings';
+import { getApp, appBasePath } from './apps';
 import { BASE_URL_SETTING } from '../middleware/base-url';
 import {
   isValidSlackWebhookUrl,
@@ -52,20 +53,57 @@ export async function sendSlackMessage(
   }
 }
 
-/** Resolve the active webhook URL, honouring the pause toggle. Null when off/unset/invalid. */
-async function getActiveWebhook(db: D1Database): Promise<string | null> {
-  const url = await getSetting(db, SLACK_WEBHOOK_SETTING);
+// ─── App resolution ─────────────────────────────────────
+//
+// The notify* helpers are called with just an entry or release id (from admin
+// routes, the API and the queue worker), so the app is derived from the row
+// itself. That keeps their signatures — and the queue message shape — unchanged
+// across the multi-app upgrade.
+
+async function appIdForEntry(db: D1Database, entryId: number): Promise<number | null> {
+  const row = await db
+    .prepare('SELECT app_id FROM entries WHERE id = ?')
+    .bind(entryId)
+    .first<{ app_id: number }>();
+  return row?.app_id ?? null;
+}
+
+async function appIdForRelease(db: D1Database, releaseId: number): Promise<number | null> {
+  const row = await db
+    .prepare('SELECT app_id FROM releases WHERE id = ?')
+    .bind(releaseId)
+    .first<{ app_id: number }>();
+  return row?.app_id ?? null;
+}
+
+/**
+ * Resolve the active webhook URL for one app, honouring its pause toggle. Null
+ * when off/unset/invalid. Each app has its own Slack destination.
+ */
+export async function getActiveWebhook(
+  db: D1Database,
+  appId: number,
+): Promise<string | null> {
+  const url = await getAppSetting(db, appId, SLACK_WEBHOOK_SETTING);
   if (!url || !isValidSlackWebhookUrl(url)) return null;
   // Absence of the flag means "on" — the integration is enabled the moment a
   // URL is saved; only an explicit 'false' pauses it.
-  const enabled = await getSetting(db, SLACK_ENABLED_SETTING);
+  const enabled = await getAppSetting(db, appId, SLACK_ENABLED_SETTING);
   if (enabled === 'false') return null;
   return url;
 }
 
-/** Read product name + favicon + base URL for message branding. */
-export async function resolveBranding(env: Bindings): Promise<SlackBranding> {
-  const projectName = (await getSetting(env.DB, 'project_name')) || 'Changelog';
+/**
+ * Read one app's product name + favicon for message branding. `base_url` is a
+ * single global setting (all apps share the hostname), so the app's public URL
+ * is that origin plus its base path — empty for the default app, `/{slug}`
+ * otherwise.
+ */
+export async function resolveBranding(
+  env: Bindings,
+  appId: number,
+): Promise<SlackBranding> {
+  const projectName = (await getAppSetting(env.DB, appId, 'project_name')) || 'Changelog';
   const baseUrl = (env.BASE_URL || (await getSetting(env.DB, BASE_URL_SETTING)) || '').replace(
     /\/$/,
     '',
@@ -74,16 +112,18 @@ export async function resolveBranding(env: Bindings): Promise<SlackBranding> {
   // icon (served as a real PNG at /herald-icon.png). Slack fetches the image
   // server-side, so this needs an absolute URL — omit it only when no public
   // base URL is known yet.
-  const faviconKey = await getSetting(env.DB, 'favicon_image_key');
+  const faviconKey = await getAppSetting(env.DB, appId, 'favicon_image_key');
   const faviconUrl = baseUrl
     ? faviconKey
       ? `${baseUrl}/images/${faviconKey}`
       : `${baseUrl}/herald-icon.png`
     : null;
+  const app = await getApp(env.DB, appId);
+  const changelogUrl = baseUrl ? `${baseUrl}${app ? appBasePath(app) : ''}` : null;
   return {
     projectName,
     faviconUrl,
-    changelogUrl: baseUrl || null,
+    changelogUrl,
   };
 }
 
@@ -94,11 +134,13 @@ export async function resolveBranding(env: Bindings): Promise<SlackBranding> {
  */
 export async function notifyEntryPublished(env: Bindings, entryId: number): Promise<void> {
   try {
-    const webhook = await getActiveWebhook(env.DB);
+    const appId = await appIdForEntry(env.DB, entryId);
+    if (appId === null) return;
+    const webhook = await getActiveWebhook(env.DB, appId);
     if (!webhook) return;
-    const entry = await getEntry(env.DB, entryId);
+    const entry = await getEntry(env.DB, appId, entryId);
     if (!entry) return;
-    const branding = await resolveBranding(env);
+    const branding = await resolveBranding(env, appId);
     const result = await sendSlackMessage(webhook, buildEntryMessage(entry, branding));
     if (!result.ok) {
       console.error(`Slack notify (entry ${entryId}) failed: ${result.error}`);
@@ -114,11 +156,13 @@ export async function notifyEntryPublished(env: Bindings, entryId: number): Prom
  */
 export async function notifyReleasePublished(env: Bindings, releaseId: number): Promise<void> {
   try {
-    const webhook = await getActiveWebhook(env.DB);
+    const appId = await appIdForRelease(env.DB, releaseId);
+    if (appId === null) return;
+    const webhook = await getActiveWebhook(env.DB, appId);
     if (!webhook) return;
-    const release = await getRelease(env.DB, releaseId);
+    const release = await getRelease(env.DB, appId, releaseId);
     if (!release) return;
-    const branding = await resolveBranding(env);
+    const branding = await resolveBranding(env, appId);
     const result = await sendSlackMessage(
       webhook,
       buildReleaseMessage(release.version, release.entries ?? [], branding),
@@ -144,8 +188,10 @@ export async function notifyReleasePublishedWhenReady(
   releaseId: number,
 ): Promise<void> {
   try {
-    await markReleaseNotifyPending(env.DB, releaseId);
-    if (await claimReleaseNotificationIfReady(env.DB, releaseId)) {
+    const appId = await appIdForRelease(env.DB, releaseId);
+    if (appId === null) return;
+    await markReleaseNotifyPending(env.DB, appId, releaseId);
+    if (await claimReleaseNotificationIfReady(env.DB, appId, releaseId)) {
       await notifyReleasePublished(env, releaseId);
     }
     // Otherwise entries are still rewriting; a queue worker will fire it via
@@ -165,9 +211,13 @@ export async function notifyPendingReleasesForEntry(
   entryId: number,
 ): Promise<void> {
   try {
+    const appId = await appIdForEntry(env.DB, entryId);
+    if (appId === null) return;
+    // The query is join-scoped to the entry's own app, so every id it returns
+    // belongs to `appId`.
     const releaseIds = await releaseIdsAwaitingNotifyForEntry(env.DB, entryId);
     for (const id of releaseIds) {
-      if (await claimReleaseNotificationIfReady(env.DB, id)) {
+      if (await claimReleaseNotificationIfReady(env.DB, appId, id)) {
         await notifyReleasePublished(env, id);
       }
     }

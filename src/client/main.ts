@@ -2,6 +2,11 @@
 // EasyMDE initialization, form handlers, flash messages, delete confirmation
 
 import './styles/main.css';
+// The slug the browser previews has to be byte-for-byte what the server would
+// store, so both sides share one implementation. `apps.ts` has no runtime
+// imports (its D1 helpers are tree-shaken out of this bundle), so pulling it in
+// here costs nothing and can't drag server-only code into the client.
+import { slugify, liveSlugInput } from '../services/apps';
 
 document.addEventListener('DOMContentLoaded', () => {
   initEasyMDE();
@@ -17,6 +22,9 @@ document.addEventListener('DOMContentLoaded', () => {
   initAiToggleVisibility();
   initAiTestButton();
   initDeleteKeyButtons();
+  initAppSwitcher();
+  initSlugFields();
+  initDeleteAppButtons();
   initCustomiseTabs();
   initBrandUploaders();
   initSectionCombo();
@@ -539,10 +547,9 @@ function initAiTestButton(): void {
     const resultOutput = document.getElementById('ai-test-output');
     if (!resultContainer || !resultOutput) return;
 
-    // Read current dropdown values
-    const modelSelect = document.getElementById('ai_model') as HTMLSelectElement | null;
+    // Only the personality is picked on this page — the model is an
+    // instance-wide setting, so the server uses the one it has on file.
     const personalitySelect = document.getElementById('ai_personality') as HTMLSelectElement | null;
-    const model = modelSelect?.value || '';
     const personality = personalitySelect?.value || 'neutral';
 
     // Show loading state
@@ -557,7 +564,7 @@ function initAiTestButton(): void {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ model, personality }),
+        body: JSON.stringify({ personality }),
       });
 
       const data = await response.json() as { success: boolean; result?: string; error?: string };
@@ -605,6 +612,152 @@ function initDeleteKeyButtons(): void {
         document.body.appendChild(form);
         form.submit();
       }
+    });
+  });
+}
+
+/**
+ * Sidebar app switcher: open/close the app list. The menu itself is a plain
+ * form, so switching still works with JavaScript disabled (it just renders
+ * expanded).
+ */
+function initAppSwitcher(): void {
+  const root = document.querySelector<HTMLElement>('[data-app-switcher]');
+  if (!root) return;
+
+  const toggle = root.querySelector<HTMLButtonElement>('[data-app-switcher-toggle]');
+  const menu = root.querySelector<HTMLElement>('[data-app-switcher-menu]');
+  if (!toggle || !menu) return;
+
+  const isOpen = (): boolean => !menu.hasAttribute('hidden');
+
+  const setOpen = (open: boolean): void => {
+    if (open) {
+      menu.removeAttribute('hidden');
+    } else {
+      menu.setAttribute('hidden', '');
+    }
+    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    root.classList.toggle('open', open);
+  };
+
+  toggle.addEventListener('click', (e) => {
+    e.stopPropagation();
+    setOpen(!isOpen());
+  });
+
+  document.addEventListener('click', (e) => {
+    if (isOpen() && !root.contains(e.target as Node)) setOpen(false);
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && isOpen()) setOpen(false);
+  });
+}
+
+/**
+ * App name/slug fields on /admin/apps/new and /admin/apps/:id.
+ *
+ * Three behaviours, all live per keystroke:
+ *  - typing a name fills in the slug, until the slug is edited by hand
+ *    (`data-slug-locked="true"` disables this outright, so an existing app's
+ *    slug is never moved out from under its public URLs);
+ *  - typing in the slug field rewrites the field itself, so "my test app"
+ *    becomes "my-test-app" as it is typed rather than only in the preview;
+ *  - typing a slug rewrites the URL preview (`data-slug-preview` carries the
+ *    base URL, `data-slug-placeholder` the empty-field stand-in), so the
+ *    preview always shows the URL the app would actually be served at.
+ */
+function initSlugFields(): void {
+  const source = document.querySelector<HTMLInputElement>('[data-slug-source]');
+  const target = document.querySelector<HTMLInputElement>('[data-slug-target]');
+  if (!target) return;
+
+  const preview = document.querySelector<HTMLElement>('[data-slug-preview]');
+  const locked = target.getAttribute('data-slug-locked') === 'true';
+
+  // Show the normalised slug \u2014 the field may hold "My App" mid-edit, but the
+  // URL it produces is "my-app".
+  const renderPreview = (): void => {
+    if (!preview) return;
+    const base = preview.getAttribute('data-slug-preview') || '';
+    const placeholder = preview.getAttribute('data-slug-placeholder') || 'your-slug';
+    preview.textContent = `${base}/${slugify(target.value) || placeholder}`;
+  };
+
+  /**
+   * Rewrite the field to `next`, keeping the caret where the user left it.
+   * Characters are only ever removed or substituted 1:1, so shifting the caret
+   * by the length delta lands it on the same character it was on before.
+   */
+  const setValue = (next: string): void => {
+    const before = target.value;
+    if (next === before) return;
+    const caret = target.selectionStart;
+    target.value = next;
+    if (caret === null) return;
+    const moved = caret - (before.length - next.length);
+    const clamped = Math.max(0, Math.min(next.length, moved));
+    target.setSelectionRange(clamped, clamped);
+  };
+
+  // Auto-fill stays on only while the slug field is untouched (or emptied
+  // again), matching what the server does with a blank slug on submit.
+  let auto = target.value === '';
+
+  target.addEventListener('input', () => {
+    // Lenient while typing: liveSlugInput keeps the trailing hyphen that a
+    // just-typed space produced, which full slugify would eat — leaving the
+    // separator unable to survive to the next word.
+    setValue(liveSlugInput(target.value));
+    auto = target.value === '';
+    renderPreview();
+  });
+
+  // Once the field is left alone, settle on exactly what the server will store.
+  target.addEventListener('blur', () => {
+    setValue(slugify(target.value));
+    renderPreview();
+  });
+
+  if (source && !locked) {
+    source.addEventListener('input', () => {
+      if (!auto) return;
+      target.value = slugify(source.value);
+      renderPreview();
+    });
+  }
+
+  renderPreview();
+}
+
+/**
+ * Delete confirmation for apps. Deleting an app takes its entries, releases and
+ * API keys with it, so the name has to be typed out.
+ */
+function initDeleteAppButtons(): void {
+  const deleteButtons = document.querySelectorAll<HTMLButtonElement>('[data-delete-app-url]');
+
+  deleteButtons.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const deleteUrl = btn.getAttribute('data-delete-app-url');
+      const appName = btn.getAttribute('data-delete-app-name') || '';
+      if (!deleteUrl) return;
+
+      const answer = window.prompt(
+        `Deleting "${appName}" permanently removes its entries, releases, sections, settings and API keys. This cannot be undone.\n\nType the app name to confirm:`,
+      );
+      if (answer === null) return;
+      if (answer.trim() !== appName) {
+        window.alert('That name didn’t match — nothing was deleted.');
+        return;
+      }
+
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.action = deleteUrl;
+      document.body.appendChild(form);
+      form.submit();
     });
   });
 }

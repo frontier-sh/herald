@@ -1,6 +1,12 @@
 import { Hono } from 'hono';
 import type { Bindings } from '../bindings';
-import { getSetting, setSetting, getAllSettings } from '../services/settings';
+import {
+  getSetting,
+  setSetting,
+  getAllAppSettings,
+  setAppSetting,
+} from '../services/settings';
+import { getDefaultApp, updateApp } from '../services/apps';
 import { getAppConfig } from '../services/github-app';
 import { OnboardingLayout } from '../views/layouts/onboarding-layout';
 import { Step1Project } from '../views/pages/onboarding/step1-project';
@@ -8,6 +14,9 @@ import { Step2Branding } from '../views/pages/onboarding/step2-branding';
 import { Step3GitHub } from '../views/pages/onboarding/step3-github';
 import { Step4Distribution } from '../views/pages/onboarding/step4-distribution';
 
+// Onboarding always configures the app served at the site root — a fresh
+// install has exactly one, seeded by migration 0012. Only `onboarding_completed`
+// is an install-wide setting; everything else here belongs to that app.
 const onboarding = new Hono<{
   Bindings: Bindings;
   Variables: { githubUser: string };
@@ -21,7 +30,8 @@ onboarding.get('/', async (c) => {
     return c.redirect('/admin');
   }
 
-  const settings = await getAllSettings(c.env.DB);
+  const app = await getDefaultApp(c.env.DB);
+  const settings = app ? await getAllAppSettings(c.env.DB, app.id) : {};
 
   return c.html(
     <OnboardingLayout currentStep={1} title="Project">
@@ -50,8 +60,16 @@ onboarding.post('/1', async (c) => {
     );
   }
 
-  await setSetting(c.env.DB, 'project_name', projectName);
-  await setSetting(c.env.DB, 'project_description', projectDescription);
+  const app = await getDefaultApp(c.env.DB);
+  if (app) {
+    await setAppSetting(c.env.DB, app.id, 'project_name', projectName);
+    await setAppSetting(c.env.DB, app.id, 'project_description', projectDescription);
+    // apps.name is the canonical display name (admin sidebar, app switcher).
+    await updateApp(c.env.DB, app.id, {
+      name: projectName,
+      description: projectDescription,
+    });
+  }
   return c.redirect('/admin/onboarding/2');
 });
 
@@ -63,7 +81,8 @@ onboarding.get('/2', async (c) => {
     return c.redirect('/admin');
   }
 
-  const settings = await getAllSettings(c.env.DB);
+  const app = await getDefaultApp(c.env.DB);
+  const settings = app ? await getAllAppSettings(c.env.DB, app.id) : {};
   const logoKey = settings['logo_image_key'] || '';
   const faviconKey = settings['favicon_image_key'] || '';
 

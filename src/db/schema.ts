@@ -19,16 +19,31 @@ export type AiStatus = (typeof AI_STATUSES)[number] | null;
 
 // Database row types
 
-export interface Project {
+/**
+ * A changelog tenant. The default app (is_default = 1) is served at the site
+ * root; every other app lives under `/{slug}`. Replaces the dead `projects`
+ * table dropped in migration 0012.
+ */
+export interface App {
   id: number;
+  slug: string;
   name: string;
   description: string;
+  is_default: number;
   created_at: string;
   updated_at: string;
 }
 
+/** Per-app key/value setting. Global settings live in `Setting`. */
+export interface AppSetting {
+  app_id: number;
+  key: string;
+  value: string | null;
+}
+
 export interface Section {
   id: number;
+  app_id: number;
   name: string;
   sort_order: number;
   created_at: string;
@@ -36,6 +51,7 @@ export interface Section {
 
 export interface Entry {
   id: number;
+  app_id: number;
   title: string;
   content: string;
   category: Category;
@@ -64,6 +80,7 @@ export interface EntryWithSection extends Entry {
 
 export interface Release {
   id: number;
+  app_id: number;
   version: string;
   title: string;
   summary: string;
@@ -92,6 +109,7 @@ export interface Setting {
 
 export interface ApiKey {
   id: number;
+  app_id: number;
   name: string;
   key_hash: string;
   created_at: string;

@@ -1,4 +1,6 @@
 import { Hono } from 'hono';
+import type { Context } from 'hono';
+import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
 import type { Bindings } from '../bindings';
 import { adminAuth } from '../middleware/auth';
 import { setFlash, getFlash } from '../middleware/flash';
@@ -20,8 +22,31 @@ import {
   deleteRelease,
   publishRelease,
   getReleaseVersionsForEntry,
+  type ReleaseWithEntries,
 } from '../services/releases';
-import { getAllSettings, getSetting, setSetting, deleteSetting } from '../services/settings';
+import {
+  getAllSettings,
+  getSetting,
+  setSetting,
+  deleteSetting,
+  getAppSetting,
+  getAllAppSettings,
+  setAppSetting,
+  deleteAppSetting,
+} from '../services/settings';
+import {
+  listApps,
+  getApp,
+  getAppBySlug,
+  createApp,
+  updateApp,
+  setDefaultApp,
+  deleteApp,
+  appBasePath,
+  validateSlug,
+  slugify,
+} from '../services/apps';
+import { resolveAppById } from '../services/app-resolver';
 import {
   isValidSlackWebhookUrl,
   notifyEntryPublished,
@@ -52,9 +77,14 @@ import {
   type ListCommitsOptions,
 } from '../services/github-commits';
 import { CATEGORIES } from '../db/schema';
-import type { Category, EntryStatus, ReleaseStatus } from '../db/schema';
+import type {
+  App,
+  Category,
+  EntryStatus,
+  EntryWithSection,
+  ReleaseStatus,
+} from '../db/schema';
 
-import { fetchChangelogData } from './public';
 import { AdminLayout } from '../views/layouts/admin-layout';
 import { AdminLogin } from '../views/pages/admin-login';
 import { Dashboard } from '../views/pages/dashboard';
@@ -62,42 +92,157 @@ import { EntriesList } from '../views/pages/entries-list';
 import { EntryEdit } from '../views/pages/entry-edit';
 import { ReleasesList } from '../views/pages/releases-list';
 import { ReleaseEdit } from '../views/pages/release-edit';
-import { SettingsPage } from '../views/pages/settings-page';
+import { AppSettingsPage } from '../views/pages/settings-page';
+import { InstanceSettingsPage } from '../views/pages/instance-settings-page';
 import { CustomisePage } from '../views/pages/customise-page';
 import { GeneratePage } from '../views/pages/generate-page';
+import { AppsList } from '../views/pages/apps-list';
+import { AppEdit, type AppFormValues } from '../views/pages/app-edit';
 import onboarding from './onboarding';
 
-// Logo, favicon and brand-colour are global branding: they render on every
-// public surface, including release detail pages. The blanket post-mutation
-// middleware below only purges the shared pages (CACHED_PATHS), so handlers
-// that change global branding must also purge every published release page.
-async function purgeReleaseDetailPages(db: Bindings['DB'], baseUrl: string): Promise<void> {
-  const releases = await listReleases(db, { status: 'published' });
-  await purgeReleasePages(baseUrl, releases.map((r) => r.version));
-}
-
-const admin = new Hono<{
+type AdminEnv = {
   Bindings: Bindings;
   Variables: {
     githubUser: string;
     logoUrl: string | null;
     faviconUrl: string | null;
+    // The app every admin page reads and writes. Chosen with the `herald_app`
+    // cookie, falling back to the default app.
+    currentApp: App;
+    // Every app, for the sidebar switcher.
+    apps: App[];
   };
-}>();
+};
+
+// Cookie holding the id of the app the admin UI is acting on. Scoped to /admin
+// so it never travels with public page requests.
+const APP_COOKIE = 'herald_app';
+
+const APP_COOKIE_OPTIONS = {
+  httpOnly: true,
+  secure: true,
+  sameSite: 'Lax',
+  path: '/admin',
+  maxAge: 365 * 24 * 60 * 60,
+} as const;
+
+// Settings a brand-new app starts with. Deliberately conservative: nothing
+// publishes or calls the AI until the user turns it on for that app.
+const NEW_APP_SETTINGS: Record<string, string> = {
+  auto_publish: 'false',
+  ai_enabled: 'false',
+  entry_grouping: 'category',
+  timezone: 'UTC',
+  date_grouping: 'day',
+};
+
+// Logo, favicon and brand-colour render on every public surface of an app,
+// including its release detail pages. The blanket post-mutation middleware
+// below only purges the shared pages, so handlers that change branding must
+// also purge every published release page of that app.
+async function purgeReleaseDetailPages(
+  db: Bindings['DB'],
+  baseUrl: string,
+  app: App,
+): Promise<void> {
+  const releases = await listReleases(db, app.id, { status: 'published' });
+  await purgeReleasePages(baseUrl, app, releases.map((r) => r.version));
+}
+
+/** Shared admin chrome props — sidebar branding plus the app switcher. */
+function chrome(c: Context<AdminEnv>) {
+  return {
+    githubUser: c.get('githubUser'),
+    logoUrl: c.get('logoUrl'),
+    faviconUrl: c.get('faviconUrl'),
+    currentApp: c.get('currentApp'),
+    apps: c.get('apps'),
+  };
+}
+
+function requestBaseUrl(c: Context<AdminEnv>): string {
+  const url = new URL(c.req.url);
+  return c.env.BASE_URL || `${url.protocol}//${url.host}`;
+}
+
+/**
+ * An unticked checkbox is simply absent from the body, so presence is the
+ * signal. Accepts "true" (what Herald's forms post) and the browser default
+ * "on" alike.
+ */
+function isChecked(value: unknown): boolean {
+  return typeof value === 'string' && value !== '' && value !== 'false';
+}
+
+/**
+ * Re-render the app form in place after a rejected submit.
+ *
+ * Every other admin form redirects back to its GET route with a flash, which
+ * for this form meant the user was returned to an empty one and lost what they
+ * had typed. Rendering here instead keeps the submitted values in the fields;
+ * the error still arrives in the usual flash banner, in its usual position, so
+ * it is indistinguishable from the redirect version to look at. Status stays
+ * 200 — this is the form again, not an error page.
+ */
+function renderAppForm(
+  c: Context<AdminEnv>,
+  opts: { app?: App; values: AppFormValues; error: string },
+) {
+  return c.html(
+    <AdminLayout
+      title={opts.app ? `Edit: ${opts.app.name}` : 'New App'}
+      currentPath="/admin/apps"
+      flash={{ type: 'error', message: opts.error }}
+      {...chrome(c)}
+    >
+      <AppEdit app={opts.app} baseUrl={requestBaseUrl(c)} values={opts.values} />
+    </AdminLayout>,
+  );
+}
+
+const admin = new Hono<AdminEnv>();
 
 // Apply admin auth middleware to all admin routes
 // The middleware itself excludes /admin/login
 admin.use('/*', adminAuth);
 
-// Purge public page cache after any successful mutation
+// Resolve the app the admin UI is acting on, and load its branding for the
+// admin chrome. Everything downstream reads `currentApp` rather than assuming
+// a single changelog.
+admin.use('/*', async (c, next) => {
+  if (new URL(c.req.url).pathname === '/admin/login') {
+    await next();
+    return;
+  }
+
+  const cookieValue = getCookie(c, APP_COOKIE);
+  const cookieId = cookieValue ? parseInt(cookieValue, 10) : NaN;
+  const app = await resolveAppById(c.env.DB, isNaN(cookieId) ? null : cookieId);
+  if (!app) {
+    // No apps at all means the database predates migration 0012.
+    return c.redirect('/setup');
+  }
+
+  c.set('currentApp', app);
+  c.set('apps', await listApps(c.env.DB));
+
+  const settings = await getAllAppSettings(c.env.DB, app.id);
+  const logoKey = settings['logo_image_key'] || '';
+  const faviconKey = settings['favicon_image_key'] || '';
+  c.set('logoUrl', logoKey ? `/images/${logoKey}` : null);
+  c.set('faviconUrl', faviconKey ? `/images/${faviconKey}` : null);
+
+  await next();
+});
+
+// Purge the current app's public page cache after any successful mutation
 admin.use('/*', async (c, next) => {
   await next();
   if (c.req.method === 'POST') {
     const status = c.res.status;
-    if ((status >= 200 && status < 400) || status === 302) {
-      const url = new URL(c.req.url);
-      const baseUrl = c.env.BASE_URL || `${url.protocol}//${url.host}`;
-      c.executionCtx.waitUntil(purgePublicCache(baseUrl));
+    const app = c.get('currentApp');
+    if (app && ((status >= 200 && status < 400) || status === 302)) {
+      c.executionCtx.waitUntil(purgePublicCache(requestBaseUrl(c), app));
     }
   }
 });
@@ -118,11 +263,13 @@ admin.get('/login', async (c) => {
 // ─── Dashboard ───────────────────────────────────────────
 
 admin.get('/', async (c) => {
+  const app = c.get('currentApp');
+
   // Redirect to onboarding if not completed
   const onboardingCompleted = await getSetting(c.env.DB, 'onboarding_completed');
   if (onboardingCompleted !== 'true') {
     // Auto-complete for existing installations that already have a project name
-    const projectName = await getSetting(c.env.DB, 'project_name');
+    const projectName = await getAppSetting(c.env.DB, app.id, 'project_name');
     if (projectName) {
       await setSetting(c.env.DB, 'onboarding_completed', 'true');
     } else {
@@ -131,19 +278,16 @@ admin.get('/', async (c) => {
   }
 
   const flash = getFlash(c);
-  const allEntries = await listEntries(c.env.DB);
-  const publishedEntries = await listEntries(c.env.DB, { status: 'published' as EntryStatus });
-  const draftEntries = await listEntries(c.env.DB, { status: 'draft' as EntryStatus });
+  const allEntries = await listEntries(c.env.DB, app.id);
+  const publishedEntries = await listEntries(c.env.DB, app.id, {
+    status: 'published' as EntryStatus,
+  });
+  const draftEntries = await listEntries(c.env.DB, app.id, { status: 'draft' as EntryStatus });
   const recentEntries = allEntries.slice(0, 10);
-  const timezone = normalizeTimezone(await getSetting(c.env.DB, 'timezone'));
+  const timezone = normalizeTimezone(await getAppSetting(c.env.DB, app.id, 'timezone'));
 
   return c.html(
-    <AdminLayout
-      title="Dashboard"
-      currentPath="/admin"
-      flash={flash}
-      githubUser={c.get('githubUser')} logoUrl={c.get('logoUrl')} faviconUrl={c.get('faviconUrl')}
-    >
+    <AdminLayout title="Dashboard" currentPath="/admin" flash={flash} {...chrome(c)}>
       <Dashboard
         totalEntries={allEntries.length}
         publishedCount={publishedEntries.length}
@@ -155,9 +299,322 @@ admin.get('/', async (c) => {
   );
 });
 
+// ─── Apps: switch the current app ───────────────────────
+
+// Registered before /apps/:id so "switch" is never read as an app id.
+admin.post('/apps/switch', async (c) => {
+  const body = await c.req.parseBody();
+  const id = parseInt((body['app_id'] as string) || '', 10);
+  const requested = ((body['redirect_to'] as string) || '').trim();
+
+  if (!isNaN(id)) {
+    const app = await getApp(c.env.DB, id);
+    if (app) {
+      setCookie(c, APP_COOKIE, String(app.id), APP_COOKIE_OPTIONS);
+    }
+  }
+
+  // Only ever bounce back inside the admin UI, and only to a section index —
+  // a record from the previous app won't exist in the newly selected one.
+  const target = /^\/admin(\/[a-z-]*)?$/.test(requested) ? requested : '/admin';
+  return c.redirect(target);
+});
+
+// ─── Apps: list ─────────────────────────────────────────
+
+admin.get('/apps', async (c) => {
+  const flash = getFlash(c);
+  const apps = c.get('apps');
+
+  const counts = await c.env.DB.prepare(
+    'SELECT app_id, COUNT(*) AS entry_count FROM entries GROUP BY app_id',
+  ).all<{ app_id: number; entry_count: number }>();
+  const entryCounts: Record<number, number> = {};
+  for (const row of counts.results) {
+    entryCounts[row.app_id] = row.entry_count;
+  }
+
+  return c.html(
+    <AdminLayout title="Apps" currentPath="/admin/apps" flash={flash} {...chrome(c)}>
+      <AppsList
+        apps={apps}
+        currentAppId={c.get('currentApp').id}
+        entryCounts={entryCounts}
+        baseUrl={requestBaseUrl(c)}
+      />
+    </AdminLayout>,
+  );
+});
+
+// ─── Apps: new app form ─────────────────────────────────
+
+admin.get('/apps/new', async (c) => {
+  const flash = getFlash(c);
+  return c.html(
+    <AdminLayout title="New App" currentPath="/admin/apps" flash={flash} {...chrome(c)}>
+      <AppEdit baseUrl={requestBaseUrl(c)} />
+    </AdminLayout>,
+  );
+});
+
+// ─── Apps: create ───────────────────────────────────────
+
+admin.post('/apps', async (c) => {
+  const body = await c.req.parseBody();
+  const name = ((body['name'] as string) || '').trim();
+  const description = ((body['description'] as string) || '').trim();
+  const rawSlug = ((body['slug'] as string) || '').trim();
+  const slug = (rawSlug || slugify(name)).toLowerCase();
+  const switchToNew = isChecked(body['switch_to']);
+
+  // Rejected submits come straight back as the same form with everything the
+  // user typed still in it — never a redirect to an empty one.
+  const values: AppFormValues = {
+    name,
+    slug: rawSlug,
+    description,
+    switchTo: switchToNew,
+  };
+  const reject = (message: string) => renderAppForm(c, { values, error: message });
+
+  if (!name) return reject('App name is required.');
+
+  const slugError = validateSlug(slug);
+  if (slugError) return reject(slugError + '.');
+
+  if (await getAppBySlug(c.env.DB, slug)) {
+    return reject(`The URL slug "${slug}" is already taken.`);
+  }
+
+  try {
+    const app = await createApp(c.env.DB, { slug, name, description });
+
+    // Seed the app's own settings. project_name/description mirror apps.name so
+    // the public page, RSS feed and Slack messages have branding from the start.
+    for (const [key, value] of Object.entries(NEW_APP_SETTINGS)) {
+      await setAppSetting(c.env.DB, app.id, key, value);
+    }
+    await setAppSetting(c.env.DB, app.id, 'project_name', name);
+    await setAppSetting(c.env.DB, app.id, 'project_description', description);
+
+    if (switchToNew) {
+      setCookie(c, APP_COOKIE, String(app.id), APP_COOKIE_OPTIONS);
+    }
+
+    setFlash(c, 'success', `App "${name}" created at /${app.slug}.`);
+    return c.redirect('/admin/apps');
+  } catch (err) {
+    // Most likely the UNIQUE constraint on apps.slug losing a race with the
+    // check above; either way the form comes back filled in.
+    return reject('Failed to create app. Please check the details and try again.');
+  }
+});
+
+// ─── Apps: edit form ────────────────────────────────────
+
+admin.get('/apps/:id', async (c) => {
+  const flash = getFlash(c);
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) {
+    setFlash(c, 'error', 'Invalid app ID.');
+    return c.redirect('/admin/apps');
+  }
+
+  const app = await getApp(c.env.DB, id);
+  if (!app) {
+    setFlash(c, 'error', 'App not found.');
+    return c.redirect('/admin/apps');
+  }
+
+  return c.html(
+    <AdminLayout title={`Edit: ${app.name}`} currentPath="/admin/apps" flash={flash} {...chrome(c)}>
+      <AppEdit app={app} baseUrl={requestBaseUrl(c)} />
+    </AdminLayout>,
+  );
+});
+
+// ─── Apps: update ───────────────────────────────────────
+
+admin.post('/apps/:id', async (c) => {
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) {
+    setFlash(c, 'error', 'Invalid app ID.');
+    return c.redirect('/admin/apps');
+  }
+
+  const body = await c.req.parseBody();
+  const name = ((body['name'] as string) || '').trim();
+  const description = ((body['description'] as string) || '').trim();
+  const rawSlug = ((body['slug'] as string) || '').trim();
+  const slug = (rawSlug || slugify(name)).toLowerCase();
+
+  const existing = await getApp(c.env.DB, id);
+  if (!existing) {
+    setFlash(c, 'error', 'App not found.');
+    return c.redirect('/admin/apps');
+  }
+
+  // As on create: a rejected edit re-renders this app's form with the submitted
+  // values, so nothing typed is lost.
+  const values: AppFormValues = {
+    name,
+    slug: rawSlug,
+    description,
+    switchTo: false,
+  };
+  const reject = (message: string) =>
+    renderAppForm(c, { app: existing, values, error: message });
+
+  if (!name) return reject('App name is required.');
+
+  const slugError = validateSlug(slug);
+  if (slugError) return reject(slugError + '.');
+
+  const clash = await getAppBySlug(c.env.DB, slug);
+  if (clash && clash.id !== id) {
+    return reject(`The URL slug "${slug}" is already taken.`);
+  }
+
+  try {
+    const updated = await updateApp(c.env.DB, id, { name, slug, description });
+
+    // apps.name is the canonical display name; the per-app settings copy is what
+    // the public page and Slack read, so both are written together.
+    await setAppSetting(c.env.DB, id, 'project_name', name);
+    await setAppSetting(c.env.DB, id, 'project_description', description);
+
+    // This route can edit an app other than the one the admin UI is switched to,
+    // and the blanket middleware only purges that current app — so the edited
+    // app is always purged explicitly here. Name and description render on its
+    // public pages, so every page of it is stale, release permalinks included.
+    // When the slug changed the app also moved, so both address forms are purged.
+    const baseUrl = requestBaseUrl(c);
+    c.executionCtx.waitUntil(purgePublicCache(baseUrl, existing));
+    c.executionCtx.waitUntil(purgeReleaseDetailPages(c.env.DB, baseUrl, existing));
+    if (updated && updated.slug !== existing.slug) {
+      c.executionCtx.waitUntil(purgePublicCache(baseUrl, updated));
+      c.executionCtx.waitUntil(purgeReleaseDetailPages(c.env.DB, baseUrl, updated));
+    }
+
+    setFlash(c, 'success', `App "${name}" updated successfully.`);
+  } catch (err) {
+    // Most likely the UNIQUE constraint on apps.slug losing a race with the
+    // clash check above; either way the form comes back filled in.
+    return reject('Failed to update app. Please check the details and try again.');
+  }
+
+  return c.redirect(`/admin/apps/${id}`);
+});
+
+// ─── Apps: make default ─────────────────────────────────
+
+admin.post('/apps/:id/default', async (c) => {
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) {
+    setFlash(c, 'error', 'Invalid app ID.');
+    return c.redirect('/admin/apps');
+  }
+
+  try {
+    const app = await getApp(c.env.DB, id);
+    if (!app) {
+      setFlash(c, 'error', 'App not found.');
+      return c.redirect('/admin/apps');
+    }
+
+    const previousDefault = c.get('apps').find((a) => a.is_default);
+    const baseUrl = requestBaseUrl(c);
+
+    // Both apps change address: the promoted one moves to the site root and the
+    // demoted one moves under its slug. Every cached page of both — including
+    // release permalinks, which the blanket middleware never touches — is stored
+    // under the old URL and must be dropped there as well as at the new one, so
+    // each app is purged in its pre-switch form and again in its post-switch one.
+    const affected = previousDefault && previousDefault.id !== app.id ? [app, previousDefault] : [app];
+    const versions = new Map<number, string[]>();
+    for (const a of affected) {
+      const releases = await listReleases(c.env.DB, a.id, { status: 'published' });
+      versions.set(a.id, releases.map((r) => r.version));
+    }
+
+    const purgeAll = async (variants: App[]) => {
+      for (const variant of variants) {
+        await purgePublicCache(baseUrl, variant);
+        await purgeReleasePages(baseUrl, variant, versions.get(variant.id) ?? []);
+      }
+    };
+
+    // Awaited, not deferred: a purge of the old paths that landed after the
+    // switch could be beaten by a request re-caching them under the new routing.
+    await purgeAll(affected);
+
+    await setDefaultApp(c.env.DB, id);
+
+    const switched = (await Promise.all(affected.map((a) => getApp(c.env.DB, a.id))))
+      .filter((a): a is App => a !== null);
+    c.executionCtx.waitUntil(purgeAll(switched));
+
+    setFlash(c, 'success', `"${app.name}" is now served at the site root.`);
+  } catch (err) {
+    setFlash(c, 'error', 'Failed to change the default app.');
+  }
+
+  return c.redirect('/admin/apps');
+});
+
+// ─── Apps: delete ───────────────────────────────────────
+
+admin.post('/apps/:id/delete', async (c) => {
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) {
+    setFlash(c, 'error', 'Invalid app ID.');
+    return c.redirect('/admin/apps');
+  }
+
+  try {
+    const app = await getApp(c.env.DB, id);
+    if (!app) {
+      setFlash(c, 'error', 'App not found.');
+      return c.redirect('/admin/apps');
+    }
+
+    const baseUrl = requestBaseUrl(c);
+    // Collect the release URLs while the rows still exist.
+    const releases = await listReleases(c.env.DB, id, { status: 'published' });
+
+    // Throws for the default app — the site root must always resolve.
+    const deleted = await deleteApp(c.env.DB, id);
+    if (!deleted) {
+      setFlash(c, 'error', 'App not found.');
+      return c.redirect('/admin/apps');
+    }
+
+    c.executionCtx.waitUntil(purgePublicCache(baseUrl, app));
+    c.executionCtx.waitUntil(
+      purgeReleasePages(baseUrl, app, releases.map((r) => r.version)),
+    );
+
+    // Deleting the app you were working in drops you back to the default one.
+    if (c.get('currentApp').id === id) {
+      deleteCookie(c, APP_COOKIE, { path: '/admin' });
+    }
+
+    setFlash(c, 'success', `App "${app.name}" and all of its content were deleted.`);
+  } catch (err) {
+    setFlash(
+      c,
+      'error',
+      err instanceof Error ? err.message + '.' : 'Failed to delete app.',
+    );
+  }
+
+  return c.redirect('/admin/apps');
+});
+
 // ─── Entries List ────────────────────────────────────────
 
 admin.get('/entries', async (c) => {
+  const app = c.get('currentApp');
   const flash = getFlash(c);
   const statusFilter = c.req.query('status') || '';
   const categoryFilter = c.req.query('category') || '';
@@ -166,11 +623,11 @@ admin.get('/entries', async (c) => {
   if (statusFilter) filters.status = statusFilter as EntryStatus;
   if (categoryFilter) filters.category = categoryFilter as Category;
 
-  const entries = await listEntries(c.env.DB, filters);
-  const timezone = normalizeTimezone(await getSetting(c.env.DB, 'timezone'));
+  const entries = await listEntries(c.env.DB, app.id, filters);
+  const timezone = normalizeTimezone(await getAppSetting(c.env.DB, app.id, 'timezone'));
 
   return c.html(
-    <AdminLayout title="Entries" currentPath="/admin/entries" flash={flash} githubUser={c.get('githubUser')} logoUrl={c.get('logoUrl')} faviconUrl={c.get('faviconUrl')}>
+    <AdminLayout title="Entries" currentPath="/admin/entries" flash={flash} {...chrome(c)}>
       <EntriesList
         entries={entries}
         statusFilter={statusFilter}
@@ -184,12 +641,13 @@ admin.get('/entries', async (c) => {
 // ─── New Entry Form ──────────────────────────────────────
 
 admin.get('/entries/new', async (c) => {
+  const app = c.get('currentApp');
   const flash = getFlash(c);
-  const sections = await listSections(c.env.DB);
-  const aiEnabled = (await getSetting(c.env.DB, 'ai_enabled')) === 'true';
-  const timezone = normalizeTimezone(await getSetting(c.env.DB, 'timezone'));
+  const sections = await listSections(c.env.DB, app.id);
+  const aiEnabled = (await getAppSetting(c.env.DB, app.id, 'ai_enabled')) === 'true';
+  const timezone = normalizeTimezone(await getAppSetting(c.env.DB, app.id, 'timezone'));
   return c.html(
-    <AdminLayout title="New Entry" currentPath="/admin/entries" flash={flash} githubUser={c.get('githubUser')} logoUrl={c.get('logoUrl')} faviconUrl={c.get('faviconUrl')}>
+    <AdminLayout title="New Entry" currentPath="/admin/entries" flash={flash} {...chrome(c)}>
       <EntryEdit sections={sections} aiEnabled={aiEnabled} timezone={timezone} />
     </AdminLayout>,
   );
@@ -198,6 +656,7 @@ admin.get('/entries/new', async (c) => {
 // ─── Create Entry ────────────────────────────────────────
 
 admin.post('/entries', async (c) => {
+  const app = c.get('currentApp');
   const body = await c.req.parseBody();
   const title = body['title'] as string;
   const content = (body['content'] as string) || (body['content_raw'] as string) || '';
@@ -218,15 +677,15 @@ admin.post('/entries', async (c) => {
   try {
     let sectionId: number | null = null;
     if (sectionName) {
-      const section = await getOrCreateSection(c.env.DB, sectionName);
+      const section = await getOrCreateSection(c.env.DB, app.id, sectionName);
       sectionId = section.id;
     }
 
     // The date field is entered in the configured timezone; store as UTC.
-    const timezone = normalizeTimezone(await getSetting(c.env.DB, 'timezone'));
+    const timezone = normalizeTimezone(await getAppSetting(c.env.DB, app.id, 'timezone'));
     const entryDate = entryDateRaw ? zonedDatetimeLocalToUTC(entryDateRaw, timezone) ?? undefined : undefined;
 
-    const entry = await createEntry(c.env.DB, {
+    const entry = await createEntry(c.env.DB, app.id, {
       title,
       content,
       category,
@@ -236,17 +695,17 @@ admin.post('/entries', async (c) => {
 
     // If publish was requested, publish immediately
     if (status === 'published') {
-      await publishEntry(c.env.DB, entry.id);
+      await publishEntry(c.env.DB, app.id, entry.id);
       // Brand-new entry going straight to published — always a real transition.
       c.executionCtx.waitUntil(notifyEntryPublished(c.env, entry.id));
     }
 
     // Check if AI processing is enabled and enqueue if so
-    const aiEnabled = await getSetting(c.env.DB, 'ai_enabled');
+    const aiEnabled = await getAppSetting(c.env.DB, app.id, 'ai_enabled');
     if (aiEnabled === 'true' && entry.content) {
       await c.env.DB.prepare(
-        'UPDATE entries SET raw_content = ?, ai_status = ? WHERE id = ?',
-      ).bind(entry.content, 'pending', entry.id).run();
+        'UPDATE entries SET raw_content = ?, ai_status = ? WHERE id = ? AND app_id = ?',
+      ).bind(entry.content, 'pending', entry.id, app.id).run();
 
       await enqueueAISummarization(c.env.CHANGELOG_QUEUE, entry.id, entry.content);
     }
@@ -262,6 +721,7 @@ admin.post('/entries', async (c) => {
 // ─── Edit Entry Form ─────────────────────────────────────
 
 admin.get('/entries/:id', async (c) => {
+  const app = c.get('currentApp');
   const flash = getFlash(c);
   const id = parseInt(c.req.param('id'), 10);
   if (isNaN(id)) {
@@ -269,18 +729,18 @@ admin.get('/entries/:id', async (c) => {
     return c.redirect('/admin/entries');
   }
 
-  const entry = await getEntry(c.env.DB, id);
+  const entry = await getEntry(c.env.DB, app.id, id);
   if (!entry) {
     setFlash(c, 'error', 'Entry not found.');
     return c.redirect('/admin/entries');
   }
 
-  const sections = await listSections(c.env.DB);
-  const aiEnabled = (await getSetting(c.env.DB, 'ai_enabled')) === 'true';
-  const timezone = normalizeTimezone(await getSetting(c.env.DB, 'timezone'));
+  const sections = await listSections(c.env.DB, app.id);
+  const aiEnabled = (await getAppSetting(c.env.DB, app.id, 'ai_enabled')) === 'true';
+  const timezone = normalizeTimezone(await getAppSetting(c.env.DB, app.id, 'timezone'));
 
   return c.html(
-    <AdminLayout title={`Edit: ${entry.title}`} currentPath="/admin/entries" flash={flash} githubUser={c.get('githubUser')} logoUrl={c.get('logoUrl')} faviconUrl={c.get('faviconUrl')}>
+    <AdminLayout title={`Edit: ${entry.title}`} currentPath="/admin/entries" flash={flash} {...chrome(c)}>
       <EntryEdit entry={entry} sections={sections} aiEnabled={aiEnabled} timezone={timezone} />
     </AdminLayout>,
   );
@@ -289,6 +749,7 @@ admin.get('/entries/:id', async (c) => {
 // ─── Update Entry ────────────────────────────────────────
 
 admin.post('/entries/:id', async (c) => {
+  const app = c.get('currentApp');
   const id = parseInt(c.req.param('id'), 10);
   if (isNaN(id)) {
     setFlash(c, 'error', 'Invalid entry ID.');
@@ -313,11 +774,11 @@ admin.post('/entries/:id', async (c) => {
   try {
     // Capture the prior status so we only notify Slack on a genuine
     // draft→published transition, not on every re-save of a published entry.
-    const before = await getEntry(c.env.DB, id);
+    const before = await getEntry(c.env.DB, app.id, id);
 
     let sectionId: number | null = null;
     if (sectionName) {
-      const section = await getOrCreateSection(c.env.DB, sectionName);
+      const section = await getOrCreateSection(c.env.DB, app.id, sectionName);
       sectionId = section.id;
     }
 
@@ -331,7 +792,7 @@ admin.post('/entries/:id', async (c) => {
     }
     if (entryDateRaw) {
       // Entered in the configured timezone; store as UTC.
-      const timezone = normalizeTimezone(await getSetting(c.env.DB, 'timezone'));
+      const timezone = normalizeTimezone(await getAppSetting(c.env.DB, app.id, 'timezone'));
       const entryDate = zonedDatetimeLocalToUTC(entryDateRaw, timezone);
       if (entryDate) updateData.entry_date = entryDate;
     }
@@ -342,7 +803,7 @@ admin.post('/entries/:id', async (c) => {
       updateData.status = 'draft';
     }
 
-    const entry = await updateEntry(c.env.DB, id, updateData);
+    const entry = await updateEntry(c.env.DB, app.id, id, updateData);
 
     if (!entry) {
       setFlash(c, 'error', 'Entry not found.');
@@ -351,7 +812,7 @@ admin.post('/entries/:id', async (c) => {
 
     // If publish was requested and it was a draft, set published_at too
     if (status === 'published') {
-      await publishEntry(c.env.DB, id);
+      await publishEntry(c.env.DB, app.id, id);
       // Notify only when this actually flipped a non-published entry public.
       if (before && before.status !== 'published') {
         c.executionCtx.waitUntil(notifyEntryPublished(c.env, id));
@@ -360,9 +821,7 @@ admin.post('/entries/:id', async (c) => {
 
     const versions = await getReleaseVersionsForEntry(c.env.DB, id);
     if (versions.length > 0) {
-      const url = new URL(c.req.url);
-      const baseUrl = c.env.BASE_URL || `${url.protocol}//${url.host}`;
-      c.executionCtx.waitUntil(purgeReleasePages(baseUrl, versions));
+      c.executionCtx.waitUntil(purgeReleasePages(requestBaseUrl(c), app, versions));
     }
 
     setFlash(c, 'success', `Entry "${title}" updated successfully.`);
@@ -376,6 +835,7 @@ admin.post('/entries/:id', async (c) => {
 // ─── Delete Entry ────────────────────────────────────────
 
 admin.post('/entries/:id/delete', async (c) => {
+  const app = c.get('currentApp');
   const id = parseInt(c.req.param('id'), 10);
   if (isNaN(id)) {
     setFlash(c, 'error', 'Invalid entry ID.');
@@ -384,14 +844,12 @@ admin.post('/entries/:id/delete', async (c) => {
 
   try {
     const versions = await getReleaseVersionsForEntry(c.env.DB, id);
-    const deleted = await deleteEntry(c.env.DB, id);
+    const deleted = await deleteEntry(c.env.DB, app.id, id);
     if (!deleted) {
       setFlash(c, 'error', 'Entry not found.');
     } else {
       if (versions.length > 0) {
-        const url = new URL(c.req.url);
-        const baseUrl = c.env.BASE_URL || `${url.protocol}//${url.host}`;
-        c.executionCtx.waitUntil(purgeReleasePages(baseUrl, versions));
+        c.executionCtx.waitUntil(purgeReleasePages(requestBaseUrl(c), app, versions));
       }
       setFlash(c, 'success', 'Entry deleted successfully.');
     }
@@ -405,6 +863,7 @@ admin.post('/entries/:id/delete', async (c) => {
 // ─── Publish Entry ───────────────────────────────────────
 
 admin.post('/entries/:id/publish', async (c) => {
+  const app = c.get('currentApp');
   const id = parseInt(c.req.param('id'), 10);
   if (isNaN(id)) {
     setFlash(c, 'error', 'Invalid entry ID.');
@@ -412,16 +871,14 @@ admin.post('/entries/:id/publish', async (c) => {
   }
 
   try {
-    const entry = await publishEntry(c.env.DB, id);
+    const entry = await publishEntry(c.env.DB, app.id, id);
     if (!entry) {
       setFlash(c, 'error', 'Entry not found.');
       return c.redirect('/admin/entries');
     }
     const versions = await getReleaseVersionsForEntry(c.env.DB, id);
     if (versions.length > 0) {
-      const url = new URL(c.req.url);
-      const baseUrl = c.env.BASE_URL || `${url.protocol}//${url.host}`;
-      c.executionCtx.waitUntil(purgeReleasePages(baseUrl, versions));
+      c.executionCtx.waitUntil(purgeReleasePages(requestBaseUrl(c), app, versions));
     }
     setFlash(c, 'success', `Entry "${entry.title}" published.`);
     return c.redirect(`/admin/entries/${id}`);
@@ -434,6 +891,7 @@ admin.post('/entries/:id/publish', async (c) => {
 // ─── Regenerate Entry with AI ────────────────────────────
 
 admin.post('/entries/:id/regenerate', async (c) => {
+  const app = c.get('currentApp');
   const id = parseInt(c.req.param('id'), 10);
   if (isNaN(id)) {
     setFlash(c, 'error', 'Invalid entry ID.');
@@ -441,7 +899,7 @@ admin.post('/entries/:id/regenerate', async (c) => {
   }
 
   try {
-    const entry = await getEntry(c.env.DB, id);
+    const entry = await getEntry(c.env.DB, app.id, id);
     if (!entry) {
       setFlash(c, 'error', 'Entry not found.');
       return c.redirect('/admin/entries');
@@ -458,14 +916,14 @@ admin.post('/entries/:id/regenerate', async (c) => {
     // Save raw_content if not already stored
     if (!entry.raw_content) {
       await c.env.DB.prepare(
-        'UPDATE entries SET raw_content = ? WHERE id = ?',
-      ).bind(contentToProcess, id).run();
+        'UPDATE entries SET raw_content = ? WHERE id = ? AND app_id = ?',
+      ).bind(contentToProcess, id, app.id).run();
     }
 
     // Set status back to pending
     await c.env.DB.prepare(
-      'UPDATE entries SET ai_status = ? WHERE id = ?',
-    ).bind('pending', id).run();
+      'UPDATE entries SET ai_status = ? WHERE id = ? AND app_id = ?',
+    ).bind('pending', id, app.id).run();
 
     // Enqueue for AI processing
     await enqueueAISummarization(c.env.CHANGELOG_QUEUE, id, contentToProcess);
@@ -481,16 +939,18 @@ admin.post('/entries/:id/regenerate', async (c) => {
 // ─── Generate from commits ──────────────────────────────
 
 admin.get('/generate', async (c) => {
+  const app = c.get('currentApp');
   const flash = getFlash(c);
   const cfg = await getAppConfig(c.env.DB);
   if (!cfg || !cfg.installation_id || !cfg.allowed_repo) {
     return c.redirect('/setup');
   }
 
-  const sourceRepo = await getSetting(c.env.DB, 'source_repo');
+  // The repository is per app; the token that reads it is instance-wide.
+  const sourceRepo = await getAppSetting(c.env.DB, app.id, 'source_repo');
   const githubPat = await getSourceToken(cfg);
-  const aiEnabled = (await getSetting(c.env.DB, 'ai_enabled')) === 'true';
-  const autoPublish = (await getSetting(c.env.DB, 'auto_publish')) === 'true';
+  const aiEnabled = (await getAppSetting(c.env.DB, app.id, 'ai_enabled')) === 'true';
+  const autoPublish = (await getAppSetting(c.env.DB, app.id, 'auto_publish')) === 'true';
 
   const mode = c.req.query('mode') === 'range' ? 'range' : 'count';
   const countParam = parseInt(c.req.query('count') || '', 10);
@@ -538,16 +998,11 @@ admin.get('/generate', async (c) => {
   // and re-running Generate doesn't create duplicates.
   const importedShas =
     commits && commits.length
-      ? await getImportedCommitShas(c.env.DB)
+      ? await getImportedCommitShas(c.env.DB, app.id)
       : new Set<string>();
 
   return c.html(
-    <AdminLayout
-      title="Generate from commits"
-      currentPath="/admin/generate"
-      flash={flash}
-      githubUser={c.get('githubUser')} logoUrl={c.get('logoUrl')} faviconUrl={c.get('faviconUrl')}
-    >
+    <AdminLayout title="Generate from commits" currentPath="/admin/generate" flash={flash} {...chrome(c)}>
       <GeneratePage
         sourceRepo={sourceRepo}
         aiEnabled={aiEnabled}
@@ -567,6 +1022,7 @@ admin.get('/generate', async (c) => {
 });
 
 admin.post('/generate', async (c) => {
+  const app = c.get('currentApp');
   const body = await c.req.parseBody({ all: true });
   const raw = body['selected'];
   const shas = Array.isArray(raw)
@@ -580,8 +1036,8 @@ admin.post('/generate', async (c) => {
     return c.redirect('/admin/generate');
   }
 
-  const aiEnabled = (await getSetting(c.env.DB, 'ai_enabled')) === 'true';
-  const sourceRepo = (await getSetting(c.env.DB, 'source_repo')) || '';
+  const aiEnabled = (await getAppSetting(c.env.DB, app.id, 'ai_enabled')) === 'true';
+  const sourceRepo = (await getAppSetting(c.env.DB, app.id, 'source_repo')) || '';
   // Only meaningful alongside AI: publish each entry once its rewrite lands, so
   // the raw commit is never exposed. The checkbox is hidden when AI is off.
   const autoPublish = aiEnabled && body['auto_publish'] === 'true';
@@ -599,7 +1055,7 @@ admin.post('/generate', async (c) => {
       : inferCategory(title);
 
     try {
-      const entry = await createEntry(c.env.DB, {
+      const entry = await createEntry(c.env.DB, app.id, {
         title,
         content: message,
         category,
@@ -618,8 +1074,8 @@ admin.post('/generate', async (c) => {
       // the queue worker does that, so the raw commit is never shown publicly.
       if (aiEnabled && message) {
         await c.env.DB.prepare(
-          'UPDATE entries SET raw_content = ?, ai_status = ?, publish_on_ai_complete = ? WHERE id = ?',
-        ).bind(message, 'pending', autoPublish ? 1 : 0, entry.id).run();
+          'UPDATE entries SET raw_content = ?, ai_status = ?, publish_on_ai_complete = ? WHERE id = ? AND app_id = ?',
+        ).bind(message, 'pending', autoPublish ? 1 : 0, entry.id, app.id).run();
         await enqueueAISummarization(c.env.CHANGELOG_QUEUE, entry.id, message);
       }
       created++;
@@ -649,17 +1105,18 @@ admin.post('/generate', async (c) => {
 // ─── Releases List ──────────────────────────────────────
 
 admin.get('/releases', async (c) => {
+  const app = c.get('currentApp');
   const flash = getFlash(c);
   const statusFilter = c.req.query('status') || '';
 
   const filters: { status?: ReleaseStatus } = {};
   if (statusFilter) filters.status = statusFilter as ReleaseStatus;
 
-  const releases = await listReleases(c.env.DB, filters);
-  const timezone = normalizeTimezone(await getSetting(c.env.DB, 'timezone'));
+  const releases = await listReleases(c.env.DB, app.id, filters);
+  const timezone = normalizeTimezone(await getAppSetting(c.env.DB, app.id, 'timezone'));
 
   return c.html(
-    <AdminLayout title="Releases" currentPath="/admin/releases" flash={flash} githubUser={c.get('githubUser')} logoUrl={c.get('logoUrl')} faviconUrl={c.get('faviconUrl')}>
+    <AdminLayout title="Releases" currentPath="/admin/releases" flash={flash} {...chrome(c)}>
       <ReleasesList releases={releases} statusFilter={statusFilter} timezone={timezone} />
     </AdminLayout>,
   );
@@ -668,14 +1125,19 @@ admin.get('/releases', async (c) => {
 // ─── New Release Form ───────────────────────────────────
 
 admin.get('/releases/new', async (c) => {
+  const app = c.get('currentApp');
   const flash = getFlash(c);
   // Fetch all entries (draft and published) that could be included
-  const availableEntries = await listEntries(c.env.DB);
-  const timezone = normalizeTimezone(await getSetting(c.env.DB, 'timezone'));
+  const availableEntries = await listEntries(c.env.DB, app.id);
+  const timezone = normalizeTimezone(await getAppSetting(c.env.DB, app.id, 'timezone'));
 
   return c.html(
-    <AdminLayout title="New Release" currentPath="/admin/releases" flash={flash} githubUser={c.get('githubUser')} logoUrl={c.get('logoUrl')} faviconUrl={c.get('faviconUrl')}>
-      <ReleaseEdit availableEntries={availableEntries} timezone={timezone} />
+    <AdminLayout title="New Release" currentPath="/admin/releases" flash={flash} {...chrome(c)}>
+      <ReleaseEdit
+        availableEntries={availableEntries}
+        timezone={timezone}
+        basePath={appBasePath(app)}
+      />
     </AdminLayout>,
   );
 });
@@ -683,6 +1145,7 @@ admin.get('/releases/new', async (c) => {
 // ─── Create Release ─────────────────────────────────────
 
 admin.post('/releases', async (c) => {
+  const app = c.get('currentApp');
   const body = await c.req.parseBody();
   const version = body['version'] as string;
   const title = (body['title'] as string) || '';
@@ -696,12 +1159,12 @@ admin.post('/releases', async (c) => {
   }
 
   try {
-    const timezone = normalizeTimezone(await getSetting(c.env.DB, 'timezone'));
+    const timezone = normalizeTimezone(await getAppSetting(c.env.DB, app.id, 'timezone'));
     const releaseDate = releaseDateRaw
       ? zonedDatetimeLocalToUTC(releaseDateRaw, timezone) ?? undefined
       : undefined;
 
-    const release = await createRelease(c.env.DB, {
+    const release = await createRelease(c.env.DB, app.id, {
       version,
       title,
       summary,
@@ -723,21 +1186,17 @@ admin.post('/releases', async (c) => {
     }
 
     if (entryIds.length > 0) {
-      await updateRelease(c.env.DB, release.id, {}, entryIds);
+      await updateRelease(c.env.DB, app.id, release.id, {}, entryIds);
     }
 
     // If publish was requested, publish immediately
     if (status === 'published') {
-      await publishRelease(c.env.DB, release.id);
+      await publishRelease(c.env.DB, app.id, release.id);
       // New release going straight to published — send the consolidated message.
       c.executionCtx.waitUntil(notifyReleasePublishedWhenReady(c.env, release.id));
     }
 
-    const url = new URL(c.req.url);
-    const baseUrl = c.env.BASE_URL || `${url.protocol}//${url.host}`;
-    c.executionCtx.waitUntil(
-      purgePublicCache(baseUrl, [`/releases/${encodeURIComponent(version)}`]),
-    );
+    c.executionCtx.waitUntil(purgeReleasePages(requestBaseUrl(c), app, [version]));
 
     setFlash(c, 'success', `Release "${version}" created successfully.`);
     return c.redirect('/admin/releases');
@@ -750,6 +1209,7 @@ admin.post('/releases', async (c) => {
 // ─── Edit Release Form ──────────────────────────────────
 
 admin.get('/releases/:id', async (c) => {
+  const app = c.get('currentApp');
   const flash = getFlash(c);
   const id = parseInt(c.req.param('id'), 10);
   if (isNaN(id)) {
@@ -757,19 +1217,24 @@ admin.get('/releases/:id', async (c) => {
     return c.redirect('/admin/releases');
   }
 
-  const release = await getRelease(c.env.DB, id);
+  const release = await getRelease(c.env.DB, app.id, id);
   if (!release) {
     setFlash(c, 'error', 'Release not found.');
     return c.redirect('/admin/releases');
   }
 
   // Fetch all entries that could be included
-  const availableEntries = await listEntries(c.env.DB);
-  const timezone = normalizeTimezone(await getSetting(c.env.DB, 'timezone'));
+  const availableEntries = await listEntries(c.env.DB, app.id);
+  const timezone = normalizeTimezone(await getAppSetting(c.env.DB, app.id, 'timezone'));
 
   return c.html(
-    <AdminLayout title={`Edit: ${release.version}`} currentPath="/admin/releases" flash={flash} githubUser={c.get('githubUser')} logoUrl={c.get('logoUrl')} faviconUrl={c.get('faviconUrl')}>
-      <ReleaseEdit release={release} availableEntries={availableEntries} timezone={timezone} />
+    <AdminLayout title={`Edit: ${release.version}`} currentPath="/admin/releases" flash={flash} {...chrome(c)}>
+      <ReleaseEdit
+        release={release}
+        availableEntries={availableEntries}
+        timezone={timezone}
+        basePath={appBasePath(app)}
+      />
     </AdminLayout>,
   );
 });
@@ -777,6 +1242,7 @@ admin.get('/releases/:id', async (c) => {
 // ─── Update Release ─────────────────────────────────────
 
 admin.post('/releases/:id', async (c) => {
+  const app = c.get('currentApp');
   const id = parseInt(c.req.param('id'), 10);
   if (isNaN(id)) {
     setFlash(c, 'error', 'Invalid release ID.');
@@ -796,7 +1262,7 @@ admin.post('/releases/:id', async (c) => {
   }
 
   try {
-    const previous = await getRelease(c.env.DB, id);
+    const previous = await getRelease(c.env.DB, app.id, id);
 
     // Collect entry IDs from checkboxes and order field
     const entryIdsRaw = body['entry_ids'];
@@ -827,12 +1293,12 @@ admin.post('/releases/:id', async (c) => {
     }
 
     if (releaseDateRaw) {
-      const timezone = normalizeTimezone(await getSetting(c.env.DB, 'timezone'));
+      const timezone = normalizeTimezone(await getAppSetting(c.env.DB, app.id, 'timezone'));
       const releaseDate = zonedDatetimeLocalToUTC(releaseDateRaw, timezone);
       if (releaseDate) updateData.release_date = releaseDate;
     }
 
-    const release = await updateRelease(c.env.DB, id, updateData, entryIds);
+    const release = await updateRelease(c.env.DB, app.id, id, updateData, entryIds);
 
     if (!release) {
       setFlash(c, 'error', 'Release not found.');
@@ -841,24 +1307,19 @@ admin.post('/releases/:id', async (c) => {
 
     // If publish was requested, publish the release
     if (status === 'published') {
-      await publishRelease(c.env.DB, id);
+      await publishRelease(c.env.DB, app.id, id);
       // Notify only when this flipped a non-published release public.
       if (previous && previous.status !== 'published') {
         c.executionCtx.waitUntil(notifyReleasePublishedWhenReady(c.env, id));
       }
     }
 
-    const url = new URL(c.req.url);
-    const baseUrl = c.env.BASE_URL || `${url.protocol}//${url.host}`;
     const versionsToPurge = new Set<string>([version]);
     if (previous && previous.version !== version) {
       versionsToPurge.add(previous.version);
     }
     c.executionCtx.waitUntil(
-      purgePublicCache(
-        baseUrl,
-        [...versionsToPurge].map((v) => `/releases/${encodeURIComponent(v)}`),
-      ),
+      purgeReleasePages(requestBaseUrl(c), app, [...versionsToPurge]),
     );
 
     setFlash(c, 'success', `Release "${version}" updated successfully.`);
@@ -872,6 +1333,7 @@ admin.post('/releases/:id', async (c) => {
 // ─── Delete Release ─────────────────────────────────────
 
 admin.post('/releases/:id/delete', async (c) => {
+  const app = c.get('currentApp');
   const id = parseInt(c.req.param('id'), 10);
   if (isNaN(id)) {
     setFlash(c, 'error', 'Invalid release ID.');
@@ -879,16 +1341,14 @@ admin.post('/releases/:id/delete', async (c) => {
   }
 
   try {
-    const existing = await getRelease(c.env.DB, id);
-    const deleted = await deleteRelease(c.env.DB, id);
+    const existing = await getRelease(c.env.DB, app.id, id);
+    const deleted = await deleteRelease(c.env.DB, app.id, id);
     if (!deleted) {
       setFlash(c, 'error', 'Release not found.');
     } else {
       if (existing) {
-        const url = new URL(c.req.url);
-        const baseUrl = c.env.BASE_URL || `${url.protocol}//${url.host}`;
         c.executionCtx.waitUntil(
-          purgePublicCache(baseUrl, [`/releases/${encodeURIComponent(existing.version)}`]),
+          purgeReleasePages(requestBaseUrl(c), app, [existing.version]),
         );
       }
       setFlash(c, 'success', 'Release deleted successfully.');
@@ -903,6 +1363,7 @@ admin.post('/releases/:id/delete', async (c) => {
 // ─── Publish Release ────────────────────────────────────
 
 admin.post('/releases/:id/publish', async (c) => {
+  const app = c.get('currentApp');
   const id = parseInt(c.req.param('id'), 10);
   if (isNaN(id)) {
     setFlash(c, 'error', 'Invalid release ID.');
@@ -911,8 +1372,8 @@ admin.post('/releases/:id/publish', async (c) => {
 
   try {
     // Capture prior status so re-clicking Publish doesn't re-notify Slack.
-    const before = await getRelease(c.env.DB, id);
-    const release = await publishRelease(c.env.DB, id);
+    const before = await getRelease(c.env.DB, app.id, id);
+    const release = await publishRelease(c.env.DB, app.id, id);
     if (!release) {
       setFlash(c, 'error', 'Release not found.');
       return c.redirect('/admin/releases');
@@ -920,10 +1381,8 @@ admin.post('/releases/:id/publish', async (c) => {
     if (before && before.status !== 'published') {
       c.executionCtx.waitUntil(notifyReleasePublishedWhenReady(c.env, id));
     }
-    const url = new URL(c.req.url);
-    const baseUrl = c.env.BASE_URL || `${url.protocol}//${url.host}`;
     c.executionCtx.waitUntil(
-      purgePublicCache(baseUrl, [`/releases/${encodeURIComponent(release.version)}`]),
+      purgeReleasePages(requestBaseUrl(c), app, [release.version]),
     );
     setFlash(c, 'success', `Release "${release.version}" published.`);
     return c.redirect(`/admin/releases/${id}`);
@@ -935,19 +1394,54 @@ admin.post('/releases/:id/publish', async (c) => {
 
 // ─── Customise Page ────────────────────────────────────
 
+/**
+ * Published content for the Customise page's live preview, scoped to one app.
+ * Kept here rather than reusing the public route's loader so the preview only
+ * pays for what it renders.
+ */
+async function fetchPreviewContent(
+  db: Bindings['DB'],
+  appId: number,
+): Promise<{ releases: ReleaseWithEntries[]; standaloneEntries: EntryWithSection[] }> {
+  const summaries = await listReleases(db, appId, { status: 'published' });
+  const releases: ReleaseWithEntries[] = [];
+  for (const summary of summaries) {
+    const full = await getRelease(db, appId, summary.id);
+    if (full) releases.push(full);
+  }
+
+  releases.sort((a, b) => {
+    const dateA = a.published_at || a.created_at;
+    const dateB = b.published_at || b.created_at;
+    return new Date(dateB).getTime() - new Date(dateA).getTime();
+  });
+
+  const published = await listEntries(db, appId, { status: 'published' });
+  const inRelease = new Set<number>();
+  for (const release of releases) {
+    for (const entry of release.entries) inRelease.add(entry.id);
+  }
+
+  return {
+    releases,
+    standaloneEntries: published.filter((e) => !inRelease.has(e.id)),
+  };
+}
+
 admin.get('/customise', async (c) => {
+  const app = c.get('currentApp');
   const flash = getFlash(c);
-  const settings = await getAllSettings(c.env.DB);
-  const url = new URL(c.req.url);
-  const baseUrl = c.env.BASE_URL || `${url.protocol}//${url.host}`;
+  const settings = await getAllAppSettings(c.env.DB, app.id);
+  const baseUrl = requestBaseUrl(c);
 
   // Fetch changelog data for live preview
-  const changelogData = await fetchChangelogData(c.env.DB);
-  const hasContent = changelogData.releases.length > 0 || changelogData.standaloneEntries.length > 0;
+  const { releases, standaloneEntries } = await fetchPreviewContent(c.env.DB, app.id);
+  const hasContent = releases.length > 0 || standaloneEntries.length > 0;
 
   // Example data if no published content exists
-  const exampleReleases = hasContent ? changelogData.releases : [{
+  const exampleReleases = hasContent ? releases : [{
     id: 0,
+    app_id: app.id,
     version: 'v1.0.0',
     title: 'Initial Release',
     summary: 'The first release of our product with core functionality.',
@@ -958,49 +1452,74 @@ admin.get('/customise', async (c) => {
     updated_at: new Date().toISOString(),
     publish_notify_pending: 0,
     entries: [
-      { id: 1, title: 'Dark mode support', content: 'Added full dark mode with system preference detection.', category: 'added' as const, section_id: null, section_name: null, status: 'published' as const, published_at: new Date().toISOString(), entry_date: new Date().toISOString(), created_at: new Date().toISOString(), updated_at: new Date().toISOString(), source: 'manual' as const, source_metadata: null, commit_sha: null, ai_status: null, raw_content: null , publish_on_ai_complete: 0 },
-      { id: 2, title: 'Login page not loading on mobile devices', content: 'Resolved an issue where the login form failed to render on iOS Safari.', category: 'fixed' as const, section_id: null, section_name: null, status: 'published' as const, published_at: new Date().toISOString(), entry_date: new Date().toISOString(), created_at: new Date().toISOString(), updated_at: new Date().toISOString(), source: 'manual' as const, source_metadata: null, commit_sha: null, ai_status: null, raw_content: null , publish_on_ai_complete: 0 },
-      { id: 3, title: 'Updated dashboard layout for better navigation', content: 'Reorganised the sidebar and top nav for improved discoverability.', category: 'changed' as const, section_id: null, section_name: null, status: 'published' as const, published_at: new Date().toISOString(), entry_date: new Date().toISOString(), created_at: new Date().toISOString(), updated_at: new Date().toISOString(), source: 'manual' as const, source_metadata: null, commit_sha: null, ai_status: null, raw_content: null , publish_on_ai_complete: 0 },
+      { id: 1, app_id: app.id, title: 'Dark mode support', content: 'Added full dark mode with system preference detection.', category: 'added' as const, section_id: null, section_name: null, status: 'published' as const, published_at: new Date().toISOString(), entry_date: new Date().toISOString(), created_at: new Date().toISOString(), updated_at: new Date().toISOString(), source: 'manual' as const, source_metadata: null, commit_sha: null, ai_status: null, raw_content: null , publish_on_ai_complete: 0 },
+      { id: 2, app_id: app.id, title: 'Login page not loading on mobile devices', content: 'Resolved an issue where the login form failed to render on iOS Safari.', category: 'fixed' as const, section_id: null, section_name: null, status: 'published' as const, published_at: new Date().toISOString(), entry_date: new Date().toISOString(), created_at: new Date().toISOString(), updated_at: new Date().toISOString(), source: 'manual' as const, source_metadata: null, commit_sha: null, ai_status: null, raw_content: null , publish_on_ai_complete: 0 },
+      { id: 3, app_id: app.id, title: 'Updated dashboard layout for better navigation', content: 'Reorganised the sidebar and top nav for improved discoverability.', category: 'changed' as const, section_id: null, section_name: null, status: 'published' as const, published_at: new Date().toISOString(), entry_date: new Date().toISOString(), created_at: new Date().toISOString(), updated_at: new Date().toISOString(), source: 'manual' as const, source_metadata: null, commit_sha: null, ai_status: null, raw_content: null , publish_on_ai_complete: 0 },
     ],
   }];
-  const exampleStandalone = hasContent ? changelogData.standaloneEntries : [];
+  const exampleStandalone = hasContent ? standaloneEntries : [];
+
+  const logoKey = settings['logo_image_key'] || '';
 
   return c.html(
-    <AdminLayout title="Customise" currentPath="/admin/customise" flash={flash} githubUser={c.get('githubUser')} logoUrl={c.get('logoUrl')} faviconUrl={c.get('faviconUrl')}>
+    <AdminLayout title="Customise" currentPath="/admin/customise" flash={flash} {...chrome(c)}>
       <CustomisePage
         settings={settings}
         baseUrl={baseUrl}
+        basePath={appBasePath(app)}
+        appName={app.name}
         previewReleases={exampleReleases}
         previewStandaloneEntries={exampleStandalone}
-        previewProjectName={changelogData.projectName}
-        previewProjectDescription={changelogData.projectDescription}
-        previewLogoUrl={changelogData.logoUrl}
+        previewProjectName={settings['project_name'] || app.name}
+        previewProjectDescription={settings['project_description'] || ''}
+        previewLogoUrl={logoKey ? `/images/${logoKey}` : null}
       />
     </AdminLayout>,
   );
 });
 
-// ─── Settings Page ──────────────────────────────────────
+// ─── Settings Page (per-app) ────────────────────────────
 
 admin.get('/settings', async (c) => {
+  const app = c.get('currentApp');
   const flash = getFlash(c);
-  const settings = await getAllSettings(c.env.DB);
-  const apiKeys = await listApiKeys(c.env.DB);
+  const settings = await getAllAppSettings(c.env.DB, app.id);
+  const apiKeys = await listApiKeys(c.env.DB, app.id);
   const newKey = c.req.query('newKey') || null;
+
+  return c.html(
+    <AdminLayout title="Settings" currentPath="/admin/settings" flash={flash} {...chrome(c)}>
+      <AppSettingsPage
+        app={app}
+        baseUrl={requestBaseUrl(c)}
+        settings={settings}
+        apiKeys={apiKeys}
+        newKey={newKey}
+      />
+    </AdminLayout>,
+  );
+});
+
+// ─── Settings Page (instance-wide) ──────────────────────
+
+admin.get('/settings/instance', async (c) => {
+  const app = c.get('currentApp');
+  const flash = getFlash(c);
+  const globalSettings = await getAllSettings(c.env.DB);
   const cfg = await getAppConfig(c.env.DB);
 
   return c.html(
     <AdminLayout
-      title="Settings"
-      currentPath="/admin/settings"
+      title="Instance Settings"
+      currentPath="/admin/settings/instance"
       flash={flash}
-      githubUser={c.get('githubUser')} logoUrl={c.get('logoUrl')} faviconUrl={c.get('faviconUrl')}
+      {...chrome(c)}
     >
-      <SettingsPage
-        settings={settings}
-        apiKeys={apiKeys}
-        newKey={newKey}
+      <InstanceSettingsPage
+        appName={app.name}
+        globalSettings={globalSettings}
         hasGithubToken={!!cfg?.source_pat}
+        githubRepo={cfg?.allowed_repo ?? null}
       />
     </AdminLayout>,
   );
@@ -1009,13 +1528,23 @@ admin.get('/settings', async (c) => {
 // ─── Settings: Source Repository ────────────────────────
 
 admin.post('/settings/source-repo', async (c) => {
+  const app = c.get('currentApp');
   const body = await c.req.parseBody();
   const sourceRepo = ((body['source_repo'] as string) || '').trim();
   const githubPat = ((body['github_pat'] as string) || '').trim();
   const clearPat = body['clear_github_pat'] === 'true';
+  // Two forms post here: the per-app repository field on /admin/settings and
+  // the install-wide token field on /admin/settings/instance. Send each back
+  // to the page it was submitted from.
+  const isAppForm = 'source_repo' in body;
 
   try {
-    await setSetting(c.env.DB, 'source_repo', sourceRepo);
+    // The repository is chosen per app; the token that reads it is shared by
+    // the whole install (it lives encrypted in github_app_config). The two live
+    // on separate pages now, so only touch what was submitted.
+    if (isAppForm) {
+      await setAppSetting(c.env.DB, app.id, 'source_repo', sourceRepo);
+    }
     // The token is encrypted at rest and never sent back to the client, so the
     // field is left blank to keep the current value; only overwrite when a new
     // one is supplied (or explicitly cleared).
@@ -1031,46 +1560,58 @@ admin.post('/settings/source-repo', async (c) => {
     setFlash(
       c,
       'success',
-      sourceRepo
-        ? `Source repository set to ${sourceRepo}.`
-        : 'Source repository cleared.',
+      !isAppForm
+        ? 'GitHub token saved.'
+        : sourceRepo
+          ? `Source repository set to ${sourceRepo}.`
+          : 'Source repository cleared.',
     );
   } catch (err) {
     setFlash(c, 'error', 'Failed to save source repository.');
   }
 
-  return c.redirect('/admin/settings');
+  return c.redirect(isAppForm ? '/admin/settings' : '/admin/settings/instance');
 });
 
 // ─── Settings: General ──────────────────────────────────
 
 admin.post('/settings/general', async (c) => {
+  const app = c.get('currentApp');
   const body = await c.req.parseBody();
-  const projectName = (body['project_name'] as string) || '';
+  const projectName = ((body['project_name'] as string) || '').trim();
   const projectDescription = (body['project_description'] as string) || '';
 
   try {
-    await setSetting(c.env.DB, 'project_name', projectName);
-    await setSetting(c.env.DB, 'project_description', projectDescription);
-    setFlash(c, 'success', 'General settings saved successfully.');
+    await setAppSetting(c.env.DB, app.id, 'project_name', projectName);
+    await setAppSetting(c.env.DB, app.id, 'project_description', projectDescription);
+    // apps.name is the canonical display name (sidebar, switcher, apps list),
+    // so keep it in step with the per-app setting the public page renders.
+    if (projectName) {
+      await updateApp(c.env.DB, app.id, {
+        name: projectName,
+        description: projectDescription,
+      });
+    }
+    setFlash(c, 'success', 'App details saved successfully.');
   } catch (err) {
-    setFlash(c, 'error', 'Failed to save general settings.');
+    setFlash(c, 'error', 'Failed to save app details.');
   }
 
-  return c.redirect('/admin/customise');
+  return c.redirect('/admin/settings');
 });
 
 // ─── Settings: Slack ────────────────────────────────────
 
 admin.post('/settings/slack', async (c) => {
+  const app = c.get('currentApp');
   const body = await c.req.parseBody();
   const webhookUrl = ((body['slack_webhook_url'] as string) || '').trim();
 
   try {
     if (webhookUrl === '') {
       // Empty submission disconnects the integration.
-      await deleteSetting(c.env.DB, SLACK_WEBHOOK_SETTING);
-      await deleteSetting(c.env.DB, SLACK_ENABLED_SETTING);
+      await deleteAppSetting(c.env.DB, app.id, SLACK_WEBHOOK_SETTING);
+      await deleteAppSetting(c.env.DB, app.id, SLACK_ENABLED_SETTING);
       setFlash(c, 'success', 'Slack disconnected.');
     } else if (!isValidSlackWebhookUrl(webhookUrl)) {
       setFlash(
@@ -1079,9 +1620,9 @@ admin.post('/settings/slack', async (c) => {
         'That doesn’t look like a Slack webhook URL (it should start with https://hooks.slack.com/).',
       );
     } else {
-      await setSetting(c.env.DB, SLACK_WEBHOOK_SETTING, webhookUrl);
+      await setAppSetting(c.env.DB, app.id, SLACK_WEBHOOK_SETTING, webhookUrl);
       // Saving a URL (re)enables notifications.
-      await setSetting(c.env.DB, SLACK_ENABLED_SETTING, 'true');
+      await setAppSetting(c.env.DB, app.id, SLACK_ENABLED_SETTING, 'true');
       setFlash(c, 'success', 'Slack connected. Published updates will post to your channel.');
     }
   } catch (err) {
@@ -1093,10 +1634,11 @@ admin.post('/settings/slack', async (c) => {
 
 // Pause/resume without losing the saved webhook URL (toggle switch, async save).
 admin.post('/settings/slack/toggle', async (c) => {
+  const app = c.get('currentApp');
   const body = await c.req.parseBody();
   const enabled = body['slack_notifications_enabled'] === 'true';
   try {
-    await setSetting(c.env.DB, SLACK_ENABLED_SETTING, enabled ? 'true' : 'false');
+    await setAppSetting(c.env.DB, app.id, SLACK_ENABLED_SETTING, enabled ? 'true' : 'false');
     return c.json({ ok: true });
   } catch (err) {
     return c.json({ ok: false, error: 'Failed to update Slack setting.' }, 500);
@@ -1106,15 +1648,17 @@ admin.post('/settings/slack/toggle', async (c) => {
 // Send a sample branded message so users can confirm the webhook works during
 // setup. Uses the just-entered URL when provided, else the saved one.
 admin.post('/settings/slack/test', async (c) => {
+  const app = c.get('currentApp');
   const body = await c.req.parseBody();
   const entered = ((body['slack_webhook_url'] as string) || '').trim();
-  const webhookUrl = entered || (await getSetting(c.env.DB, SLACK_WEBHOOK_SETTING)) || '';
+  const webhookUrl =
+    entered || (await getAppSetting(c.env.DB, app.id, SLACK_WEBHOOK_SETTING)) || '';
 
   if (!isValidSlackWebhookUrl(webhookUrl)) {
     return c.json({ ok: false, error: 'Enter a valid Slack webhook URL first.' }, 400);
   }
 
-  const branding = await resolveBranding(c.env);
+  const branding = await resolveBranding(c.env, app.id);
   const message = buildEntryMessage(
     {
       title: 'Test notification',
@@ -1130,21 +1674,20 @@ admin.post('/settings/slack/test', async (c) => {
 // ─── Settings: Display ──────────────────────────────────
 
 admin.post('/settings/display', async (c) => {
+  const app = c.get('currentApp');
   const body = await c.req.parseBody();
   const entryGrouping = body['entry_grouping'] === 'section' ? 'section' : 'category';
   const timezone = normalizeTimezone(body['timezone'] as string);
   const dateGrouping = body['date_grouping'] === 'month' ? 'month' : 'day';
 
   try {
-    await setSetting(c.env.DB, 'entry_grouping', entryGrouping);
-    await setSetting(c.env.DB, 'timezone', timezone);
-    await setSetting(c.env.DB, 'date_grouping', dateGrouping);
+    await setAppSetting(c.env.DB, app.id, 'entry_grouping', entryGrouping);
+    await setAppSetting(c.env.DB, app.id, 'timezone', timezone);
+    await setAppSetting(c.env.DB, app.id, 'date_grouping', dateGrouping);
 
     // Timezone & grouping affect every rendered page, including release detail
     // pages which aren't covered by the post-mutation shared-page purge.
-    const url = new URL(c.req.url);
-    const baseUrl = c.env.BASE_URL || `${url.protocol}//${url.host}`;
-    c.executionCtx.waitUntil(purgeReleaseDetailPages(c.env.DB, baseUrl));
+    c.executionCtx.waitUntil(purgeReleaseDetailPages(c.env.DB, requestBaseUrl(c), app));
 
     setFlash(c, 'success', 'Display settings saved successfully.');
   } catch (err) {
@@ -1157,19 +1700,18 @@ admin.post('/settings/display', async (c) => {
 // ─── Settings: Theme ────────────────────────────────────
 
 admin.post('/settings/theme', async (c) => {
+  const app = c.get('currentApp');
   const body = await c.req.parseBody();
   const theme = body['theme'] as string;
   const validThemes = ['herald', 'opencode', 'notion'];
   const selectedTheme = validThemes.includes(theme) ? theme : 'herald';
 
   try {
-    await setSetting(c.env.DB, 'theme', selectedTheme);
+    await setAppSetting(c.env.DB, app.id, 'theme', selectedTheme);
 
     // Release detail pages also render the theme and are cached separately
     // from the shared pages purged by the post-mutation middleware.
-    const url = new URL(c.req.url);
-    const baseUrl = c.env.BASE_URL || `${url.protocol}//${url.host}`;
-    c.executionCtx.waitUntil(purgeReleaseDetailPages(c.env.DB, baseUrl));
+    c.executionCtx.waitUntil(purgeReleaseDetailPages(c.env.DB, requestBaseUrl(c), app));
 
     setFlash(c, 'success', 'Theme saved successfully.');
   } catch (err) {
@@ -1182,18 +1724,17 @@ admin.post('/settings/theme', async (c) => {
 // ─── Settings: Primary colour ───────────────────────────
 
 admin.post('/settings/primary-color', async (c) => {
+  const app = c.get('currentApp');
   const body = await c.req.parseBody();
   const raw = (body['primary_color'] as string) || '';
   const color = /^#[0-9a-fA-F]{6}$/.test(raw) ? raw.toUpperCase() : '#4F46E5';
 
   try {
-    await setSetting(c.env.DB, 'primary_color', color);
+    await setAppSetting(c.env.DB, app.id, 'primary_color', color);
 
     // Release detail pages also render the brand colour and are cached
     // separately from the shared pages purged by the post-mutation middleware.
-    const url = new URL(c.req.url);
-    const baseUrl = c.env.BASE_URL || `${url.protocol}//${url.host}`;
-    c.executionCtx.waitUntil(purgeReleaseDetailPages(c.env.DB, baseUrl));
+    c.executionCtx.waitUntil(purgeReleaseDetailPages(c.env.DB, requestBaseUrl(c), app));
 
     return c.json({ ok: true, primary_color: color });
   } catch (err) {
@@ -1204,22 +1745,21 @@ admin.post('/settings/primary-color', async (c) => {
 // ─── Settings: Public page visibility toggles ───────────
 
 admin.post('/settings/visibility', async (c) => {
+  const app = c.get('currentApp');
   const body = await c.req.parseBody();
   const keys = ['show_title', 'show_description', 'hide_attribution'] as const;
 
   try {
     for (const key of keys) {
       if (key in body) {
-        await setSetting(c.env.DB, key, body[key] === 'true' ? 'true' : 'false');
+        await setAppSetting(c.env.DB, app.id, key, body[key] === 'true' ? 'true' : 'false');
       }
     }
 
     // Title/description render on the home changelog; the attribution footer
     // renders on every public surface, including release detail pages which
     // aren't covered by the post-mutation shared-page purge.
-    const url = new URL(c.req.url);
-    const baseUrl = c.env.BASE_URL || `${url.protocol}//${url.host}`;
-    c.executionCtx.waitUntil(purgeReleaseDetailPages(c.env.DB, baseUrl));
+    c.executionCtx.waitUntil(purgeReleaseDetailPages(c.env.DB, requestBaseUrl(c), app));
 
     return c.json({ ok: true });
   } catch (err) {
@@ -1230,11 +1770,12 @@ admin.post('/settings/visibility', async (c) => {
 // ─── Settings: Publishing ───────────────────────────────
 
 admin.post('/settings/publishing', async (c) => {
+  const app = c.get('currentApp');
   const body = await c.req.parseBody();
   const autoPublish = body['auto_publish'] === 'true' ? 'true' : 'false';
 
   try {
-    await setSetting(c.env.DB, 'auto_publish', autoPublish);
+    await setAppSetting(c.env.DB, app.id, 'auto_publish', autoPublish);
     setFlash(c, 'success', 'Publishing settings saved successfully.');
   } catch (err) {
     setFlash(c, 'error', 'Failed to save publishing settings.');
@@ -1246,6 +1787,7 @@ admin.post('/settings/publishing', async (c) => {
 // ─── Settings: AI ───────────────────────────────────────
 
 admin.post('/settings/ai', async (c) => {
+  const app = c.get('currentApp');
   const body = await c.req.parseBody();
   const aiEnabled = body['ai_enabled'] === 'true' ? 'true' : 'false';
   const aiModel = resolveModelId(body['ai_model'] as string);
@@ -1254,16 +1796,27 @@ admin.post('/settings/ai', async (c) => {
     ? (body['ai_personality'] as string)
     : 'neutral';
 
+  // Whether AI runs, and how it writes, is decided per app (/admin/settings);
+  // the model itself is an instance-wide choice, one Workers AI binding for the
+  // whole install (/admin/settings/instance). Both forms post here, and only
+  // the instance one submits `ai_model` — an unchecked per-app toggle sends
+  // nothing at all, and must not be read as "disable the model". `ai_scope` is
+  // still honoured for callers built against the older single-page form.
+  const isInstanceForm = 'ai_model' in body || body['ai_scope'] === 'instance';
+
   try {
-    await setSetting(c.env.DB, 'ai_enabled', aiEnabled);
-    await setSetting(c.env.DB, 'ai_model', aiModel);
-    await setSetting(c.env.DB, 'ai_personality', aiPersonality);
+    if (isInstanceForm) {
+      await setSetting(c.env.DB, 'ai_model', aiModel);
+    } else {
+      await setAppSetting(c.env.DB, app.id, 'ai_enabled', aiEnabled);
+      await setAppSetting(c.env.DB, app.id, 'ai_personality', aiPersonality);
+    }
     setFlash(c, 'success', 'AI settings saved successfully.');
   } catch (err) {
     setFlash(c, 'error', 'Failed to save AI settings.');
   }
 
-  return c.redirect('/admin/settings');
+  return c.redirect(isInstanceForm ? '/admin/settings/instance' : '/admin/settings');
 });
 
 // ─── Settings: AI Test ──────────────────────────────────
@@ -1271,7 +1824,10 @@ admin.post('/settings/ai', async (c) => {
 admin.post('/settings/ai/test', async (c) => {
   try {
     const body = await c.req.json().catch(() => ({})) as { model?: string; personality?: string };
-    const model = resolveModelId(body.model);
+    // The Test AI button sits with the per-app AI settings, where the model
+    // picker isn't shown — fall back to the install-wide model on file so the
+    // test exercises what this app actually writes with.
+    const model = resolveModelId(body.model || (await getSetting(c.env.DB, 'ai_model')));
     const personality = body.personality || 'neutral';
 
     const personalityInstructions: Record<string, string> = {
@@ -1329,6 +1885,7 @@ admin.post('/images/upload', async (c) => {
 // ─── Brand Image Upload (JSON API for drag-and-drop) ───
 
 admin.post('/images/upload/logo', async (c) => {
+  const app = c.get('currentApp');
   try {
     const body = await c.req.parseBody();
     const file = body['file'];
@@ -1337,18 +1894,17 @@ admin.post('/images/upload/logo', async (c) => {
       return c.json({ error: 'No file provided' }, 400);
     }
 
-    const existingKey = await getSetting(c.env.DB, 'logo_image_key');
-    const result = await uploadBrandImage(c.env.IMAGES, c.env.IMAGE_STORE, file, 'logo', existingKey);
+    const existingKey = await getAppSetting(c.env.DB, app.id, 'logo_image_key');
+    const result = await uploadBrandImage(c.env.IMAGES, c.env.IMAGE_STORE, app.id, file, 'logo', existingKey);
 
     if ('error' in result) {
       return c.json({ error: result.error }, 400);
     }
 
-    await setSetting(c.env.DB, 'logo_image_key', result.key);
+    await setAppSetting(c.env.DB, app.id, 'logo_image_key', result.key);
 
-    const url = new URL(c.req.url);
-    const baseUrl = c.env.BASE_URL || `${url.protocol}//${url.host}`;
-    c.executionCtx.waitUntil(purgeReleaseDetailPages(c.env.DB, baseUrl));
+    const baseUrl = requestBaseUrl(c);
+    c.executionCtx.waitUntil(purgeReleaseDetailPages(c.env.DB, baseUrl, app));
 
     if (existingKey && existingKey !== result.key) {
       c.executionCtx.waitUntil(purgeImageCache(baseUrl, existingKey));
@@ -1361,6 +1917,7 @@ admin.post('/images/upload/logo', async (c) => {
 });
 
 admin.post('/images/upload/favicon', async (c) => {
+  const app = c.get('currentApp');
   try {
     const body = await c.req.parseBody();
     const file = body['file'];
@@ -1369,18 +1926,17 @@ admin.post('/images/upload/favicon', async (c) => {
       return c.json({ error: 'No file provided' }, 400);
     }
 
-    const existingKey = await getSetting(c.env.DB, 'favicon_image_key');
-    const result = await uploadBrandImage(c.env.IMAGES, c.env.IMAGE_STORE, file, 'favicon', existingKey);
+    const existingKey = await getAppSetting(c.env.DB, app.id, 'favicon_image_key');
+    const result = await uploadBrandImage(c.env.IMAGES, c.env.IMAGE_STORE, app.id, file, 'favicon', existingKey);
 
     if ('error' in result) {
       return c.json({ error: result.error }, 400);
     }
 
-    await setSetting(c.env.DB, 'favicon_image_key', result.key);
+    await setAppSetting(c.env.DB, app.id, 'favicon_image_key', result.key);
 
-    const url = new URL(c.req.url);
-    const baseUrl = c.env.BASE_URL || `${url.protocol}//${url.host}`;
-    c.executionCtx.waitUntil(purgeReleaseDetailPages(c.env.DB, baseUrl));
+    const baseUrl = requestBaseUrl(c);
+    c.executionCtx.waitUntil(purgeReleaseDetailPages(c.env.DB, baseUrl, app));
 
     if (existingKey && existingKey !== result.key) {
       c.executionCtx.waitUntil(purgeImageCache(baseUrl, existingKey));
@@ -1395,6 +1951,7 @@ admin.post('/images/upload/favicon', async (c) => {
 // ─── Settings: Logo Upload ─────────────────────────────
 
 admin.post('/settings/logo', async (c) => {
+  const app = c.get('currentApp');
   const body = await c.req.parseBody();
   const file = body['logo_file'];
 
@@ -1404,19 +1961,18 @@ admin.post('/settings/logo', async (c) => {
   }
 
   try {
-    const existingKey = await getSetting(c.env.DB, 'logo_image_key');
-    const result = await uploadBrandImage(c.env.IMAGES, c.env.IMAGE_STORE, file, 'logo', existingKey);
+    const existingKey = await getAppSetting(c.env.DB, app.id, 'logo_image_key');
+    const result = await uploadBrandImage(c.env.IMAGES, c.env.IMAGE_STORE, app.id, file, 'logo', existingKey);
 
     if ('error' in result) {
       setFlash(c, 'error', result.error);
       return c.redirect('/admin/customise');
     }
 
-    await setSetting(c.env.DB, 'logo_image_key', result.key);
+    await setAppSetting(c.env.DB, app.id, 'logo_image_key', result.key);
 
-    const url = new URL(c.req.url);
-    const baseUrl = c.env.BASE_URL || `${url.protocol}//${url.host}`;
-    c.executionCtx.waitUntil(purgeReleaseDetailPages(c.env.DB, baseUrl));
+    const baseUrl = requestBaseUrl(c);
+    c.executionCtx.waitUntil(purgeReleaseDetailPages(c.env.DB, baseUrl, app));
 
     if (existingKey && existingKey !== result.key) {
       c.executionCtx.waitUntil(purgeImageCache(baseUrl, existingKey));
@@ -1432,15 +1988,15 @@ admin.post('/settings/logo', async (c) => {
 // ─── Settings: Logo Remove ─────────────────────────────
 
 admin.post('/settings/logo/remove', async (c) => {
+  const app = c.get('currentApp');
   try {
-    const existingKey = await getSetting(c.env.DB, 'logo_image_key');
+    const existingKey = await getAppSetting(c.env.DB, app.id, 'logo_image_key');
     if (existingKey) {
       await deleteImage(c.env.IMAGE_STORE, existingKey);
-      await setSetting(c.env.DB, 'logo_image_key', '');
-      const url = new URL(c.req.url);
-      const baseUrl = c.env.BASE_URL || `${url.protocol}//${url.host}`;
+      await setAppSetting(c.env.DB, app.id, 'logo_image_key', '');
+      const baseUrl = requestBaseUrl(c);
       c.executionCtx.waitUntil(purgeImageCache(baseUrl, existingKey));
-      c.executionCtx.waitUntil(purgeReleaseDetailPages(c.env.DB, baseUrl));
+      c.executionCtx.waitUntil(purgeReleaseDetailPages(c.env.DB, baseUrl, app));
     }
     setFlash(c, 'success', 'Logo removed.');
   } catch (err) {
@@ -1452,6 +2008,7 @@ admin.post('/settings/logo/remove', async (c) => {
 // ─── Settings: Favicon Upload ──────────────────────────
 
 admin.post('/settings/favicon', async (c) => {
+  const app = c.get('currentApp');
   const body = await c.req.parseBody();
   const file = body['favicon_file'];
 
@@ -1461,19 +2018,18 @@ admin.post('/settings/favicon', async (c) => {
   }
 
   try {
-    const existingKey = await getSetting(c.env.DB, 'favicon_image_key');
-    const result = await uploadBrandImage(c.env.IMAGES, c.env.IMAGE_STORE, file, 'favicon', existingKey);
+    const existingKey = await getAppSetting(c.env.DB, app.id, 'favicon_image_key');
+    const result = await uploadBrandImage(c.env.IMAGES, c.env.IMAGE_STORE, app.id, file, 'favicon', existingKey);
 
     if ('error' in result) {
       setFlash(c, 'error', result.error);
       return c.redirect('/admin/customise');
     }
 
-    await setSetting(c.env.DB, 'favicon_image_key', result.key);
+    await setAppSetting(c.env.DB, app.id, 'favicon_image_key', result.key);
 
-    const url = new URL(c.req.url);
-    const baseUrl = c.env.BASE_URL || `${url.protocol}//${url.host}`;
-    c.executionCtx.waitUntil(purgeReleaseDetailPages(c.env.DB, baseUrl));
+    const baseUrl = requestBaseUrl(c);
+    c.executionCtx.waitUntil(purgeReleaseDetailPages(c.env.DB, baseUrl, app));
 
     if (existingKey && existingKey !== result.key) {
       c.executionCtx.waitUntil(purgeImageCache(baseUrl, existingKey));
@@ -1489,15 +2045,15 @@ admin.post('/settings/favicon', async (c) => {
 // ─── Settings: Favicon Remove ──────────────────────────
 
 admin.post('/settings/favicon/remove', async (c) => {
+  const app = c.get('currentApp');
   try {
-    const existingKey = await getSetting(c.env.DB, 'favicon_image_key');
+    const existingKey = await getAppSetting(c.env.DB, app.id, 'favicon_image_key');
     if (existingKey) {
       await deleteImage(c.env.IMAGE_STORE, existingKey);
-      await setSetting(c.env.DB, 'favicon_image_key', '');
-      const url = new URL(c.req.url);
-      const baseUrl = c.env.BASE_URL || `${url.protocol}//${url.host}`;
+      await setAppSetting(c.env.DB, app.id, 'favicon_image_key', '');
+      const baseUrl = requestBaseUrl(c);
       c.executionCtx.waitUntil(purgeImageCache(baseUrl, existingKey));
-      c.executionCtx.waitUntil(purgeReleaseDetailPages(c.env.DB, baseUrl));
+      c.executionCtx.waitUntil(purgeReleaseDetailPages(c.env.DB, baseUrl, app));
     }
     setFlash(c, 'success', 'Favicon removed.');
   } catch (err) {
@@ -1509,6 +2065,7 @@ admin.post('/settings/favicon/remove', async (c) => {
 // ─── Settings: Create API Key ───────────────────────────
 
 admin.post('/settings/keys', async (c) => {
+  const app = c.get('currentApp');
   const body = await c.req.parseBody();
   const name = (body['name'] as string) || '';
 
@@ -1518,7 +2075,9 @@ admin.post('/settings/keys', async (c) => {
   }
 
   try {
-    const result = await createApiKey(c.env.DB, name.trim());
+    // Keys are scoped to the app they were created in — the API and webhook
+    // write to that app and no other.
+    const result = await createApiKey(c.env.DB, app.id, name.trim());
     setFlash(c, 'success', `API key "${name}" created successfully.`);
     return c.redirect(`/admin/settings?newKey=${encodeURIComponent(result.key)}`);
   } catch (err) {
@@ -1530,6 +2089,7 @@ admin.post('/settings/keys', async (c) => {
 // ─── Settings: Delete API Key ───────────────────────────
 
 admin.post('/settings/keys/:id/delete', async (c) => {
+  const app = c.get('currentApp');
   const id = parseInt(c.req.param('id'), 10);
   if (isNaN(id)) {
     setFlash(c, 'error', 'Invalid API key ID.');
@@ -1537,7 +2097,7 @@ admin.post('/settings/keys/:id/delete', async (c) => {
   }
 
   try {
-    const deleted = await deleteApiKey(c.env.DB, id);
+    const deleted = await deleteApiKey(c.env.DB, app.id, id);
     if (!deleted) {
       setFlash(c, 'error', 'API key not found.');
     } else {

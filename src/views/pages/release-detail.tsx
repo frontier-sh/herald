@@ -13,6 +13,8 @@ interface ReleaseWithEntries extends Release {
 
 interface ReleaseDetailProps {
   projectName: string;
+  /** URL prefix of the app being rendered: '' for the default app, else '/slug'. */
+  basePath?: string;
   release: ReleaseWithEntries;
   entryGrouping?: 'category' | 'section';
   timezone?: string;
@@ -20,6 +22,7 @@ interface ReleaseDetailProps {
 
 export const ReleaseDetail: FC<ReleaseDetailProps> = ({
   projectName,
+  basePath = '',
   release,
   entryGrouping = 'category',
   timezone = 'UTC',
@@ -31,7 +34,7 @@ export const ReleaseDetail: FC<ReleaseDetailProps> = ({
   return (
     <div class="changelog">
       <nav class="release-detail-breadcrumb" aria-label="Breadcrumb">
-        <a href="/">{projectName}</a>
+        <a href={basePath || '/'}>{projectName}</a>
         <span aria-hidden="true"> / </span>
         <span>{release.version}</span>
       </nav>

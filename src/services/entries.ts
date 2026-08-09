@@ -59,12 +59,32 @@ export interface CreateEntryData {
   entry_date?: string;
 }
 
+/**
+ * Sections are per-app, so an incoming section_id is only honoured when it
+ * belongs to the same app as the entry. Anything else (unknown id, or another
+ * app's section) resolves to null rather than erroring — the same lenient shape
+ * the rest of this module uses for ids it can't match.
+ */
+async function resolveSectionId(
+  db: D1Database,
+  appId: number,
+  sectionId: number | null | undefined,
+): Promise<number | null> {
+  if (sectionId === null || sectionId === undefined) return null;
+  const section = await db
+    .prepare('SELECT id FROM sections WHERE id = ? AND app_id = ?')
+    .bind(sectionId, appId)
+    .first<{ id: number }>();
+  return section?.id ?? null;
+}
+
 export async function listEntries(
   db: D1Database,
+  appId: number,
   filters?: ListEntriesFilters,
 ): Promise<EntryWithSection[]> {
-  const conditions: string[] = [];
-  const params: unknown[] = [];
+  const conditions: string[] = ['e.app_id = ?'];
+  const params: unknown[] = [appId];
 
   if (filters?.status) {
     conditions.push('e.status = ?');
@@ -79,45 +99,51 @@ export async function listEntries(
     params.push(filters.section_id);
   }
 
-  let sql = 'SELECT e.*, s.name AS section_name FROM entries e LEFT JOIN sections s ON e.section_id = s.id';
-  if (conditions.length > 0) {
-    sql += ' WHERE ' + conditions.join(' AND ');
-  }
+  // The join is app-scoped as well as id-matched, so a section belonging to
+  // another app can never contribute its name to this app's rows.
+  let sql = 'SELECT e.*, s.name AS section_name FROM entries e LEFT JOIN sections s ON e.section_id = s.id AND s.app_id = e.app_id';
+  sql += ' WHERE ' + conditions.join(' AND ');
   sql += ' ORDER BY e.created_at DESC';
 
   const result = await db.prepare(sql).bind(...params).all<EntryWithSection>();
   return result.results;
 }
 
+/** Scoped by app: an id from another app resolves to null, never a foreign row. */
 export async function getEntry(
   db: D1Database,
+  appId: number,
   id: number,
 ): Promise<EntryWithSection | null> {
   const result = await db
-    .prepare('SELECT e.*, s.name AS section_name FROM entries e LEFT JOIN sections s ON e.section_id = s.id WHERE e.id = ?')
-    .bind(id)
+    .prepare('SELECT e.*, s.name AS section_name FROM entries e LEFT JOIN sections s ON e.section_id = s.id AND s.app_id = e.app_id WHERE e.id = ? AND e.app_id = ?')
+    .bind(id, appId)
     .first<EntryWithSection>();
   return result ?? null;
 }
 
 export async function createEntry(
   db: D1Database,
+  appId: number,
   data: CreateEntryData,
 ): Promise<EntryWithSection> {
+  const sectionId = await resolveSectionId(db, appId, data.section_id);
+
   const result = await db
     .prepare(
-      `INSERT INTO entries (title, content, category, section_id, source, source_metadata, commit_sha, created_at, entry_date)
-       VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(datetime(?), datetime('now')), datetime(?))
+      `INSERT INTO entries (app_id, title, content, category, section_id, source, source_metadata, commit_sha, created_at, entry_date)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, COALESCE(datetime(?), datetime('now')), datetime(?))
        RETURNING *`,
     )
     .bind(
+      appId,
       data.title,
       data.content ?? '',
       // When no category is supplied, infer one from the commit subject rather
       // than defaulting to a blanket 'added'. If AI is enabled, the queue worker
       // later overrides this with the AI's choice.
       data.category ?? inferCategory(data.title),
-      data.section_id ?? null,
+      sectionId,
       data.source ?? 'manual',
       data.source_metadata ?? null,
       data.commit_sha ?? null,
@@ -130,13 +156,14 @@ export async function createEntry(
 
   // Re-fetch with section name joined
   if (result?.section_id) {
-    return (await getEntry(db, result.id))!;
+    return (await getEntry(db, appId, result.id))!;
   }
   return { ...result!, section_name: null };
 }
 
 export async function updateEntry(
   db: D1Database,
+  appId: number,
   id: number,
   data: Partial<Entry>,
 ): Promise<EntryWithSection | null> {
@@ -158,39 +185,47 @@ export async function updateEntry(
   for (const field of allowedFields) {
     if (field in data) {
       fields.push(`${field} = ?`);
-      params.push(data[field as keyof Entry]);
+      // section_id is the one field that names another table's row, so it is
+      // validated against this app's sections rather than written through.
+      params.push(
+        field === 'section_id'
+          ? await resolveSectionId(db, appId, data.section_id)
+          : data[field as keyof Entry],
+      );
     }
   }
 
   if (fields.length === 0) {
-    return getEntry(db, id);
+    return getEntry(db, appId, id);
   }
 
   fields.push("updated_at = datetime('now')");
-  params.push(id);
+  params.push(id, appId);
 
   await db
     .prepare(
-      `UPDATE entries SET ${fields.join(', ')} WHERE id = ?`,
+      `UPDATE entries SET ${fields.join(', ')} WHERE id = ? AND app_id = ?`,
     )
     .bind(...params)
     .run();
-  return getEntry(db, id);
+  return getEntry(db, appId, id);
 }
 
 export async function deleteEntry(
   db: D1Database,
+  appId: number,
   id: number,
 ): Promise<boolean> {
   const result = await db
-    .prepare('DELETE FROM entries WHERE id = ?')
-    .bind(id)
+    .prepare('DELETE FROM entries WHERE id = ? AND app_id = ?')
+    .bind(id, appId)
     .run();
   return result.meta.changes > 0;
 }
 
 export async function publishEntry(
   db: D1Database,
+  appId: number,
   id: number,
 ): Promise<EntryWithSection | null> {
   // Clearing publish_on_ai_complete keeps the flag from lingering after the
@@ -200,26 +235,34 @@ export async function publishEntry(
       `UPDATE entries SET status = 'published', published_at = datetime('now'),
          entry_date = COALESCE(entry_date, datetime('now')),
          publish_on_ai_complete = 0, updated_at = datetime('now')
-       WHERE id = ?`,
+       WHERE id = ? AND app_id = ?`,
     )
-    .bind(id)
+    .bind(id, appId)
     .run();
-  return getEntry(db, id);
+  return getEntry(db, appId, id);
 }
 
 /** SHAs of commits already imported as entries, for de-duping the Generate flow. */
-export async function getImportedCommitShas(db: D1Database): Promise<Set<string>> {
+export async function getImportedCommitShas(
+  db: D1Database,
+  appId: number,
+): Promise<Set<string>> {
   const result = await db
-    .prepare('SELECT commit_sha FROM entries WHERE commit_sha IS NOT NULL')
+    .prepare('SELECT commit_sha FROM entries WHERE app_id = ? AND commit_sha IS NOT NULL')
+    .bind(appId)
     .all<{ commit_sha: string }>();
   return new Set(result.results.map((r) => r.commit_sha));
 }
 
-export async function getDraftEntries(db: D1Database): Promise<EntryWithSection[]> {
+export async function getDraftEntries(
+  db: D1Database,
+  appId: number,
+): Promise<EntryWithSection[]> {
   const result = await db
     .prepare(
-      "SELECT e.*, s.name AS section_name FROM entries e LEFT JOIN sections s ON e.section_id = s.id WHERE e.status = 'draft' ORDER BY e.created_at DESC",
+      "SELECT e.*, s.name AS section_name FROM entries e LEFT JOIN sections s ON e.section_id = s.id AND s.app_id = e.app_id WHERE e.app_id = ? AND e.status = 'draft' ORDER BY e.created_at DESC",
     )
+    .bind(appId)
     .all<EntryWithSection>();
   return result.results;
 }

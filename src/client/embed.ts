@@ -7,30 +7,58 @@
 // Inline mode (no iframe, styleable via CSS variables):
 //   <div data-herald-widget data-herald-inline></div>
 //   <script async src="https://your-herald.com/embed.js"></script>
+//
+// A Herald install can serve several apps: the default one at the site root,
+// every other one under its slug. The script URL says which app a widget shows,
+// so the snippet for an app called "tiller" is:
+//   <script async src="https://your-herald.com/tiller/embed.js"></script>
+//
+// One page can show several apps' changelogs from a single script tag by
+// naming the app per widget — this wins over the script's own URL:
+//   <div data-herald-widget data-herald-app="tiller"></div>
+//   <div data-herald-widget data-herald-app=""></div>   <!-- default app -->
+//   <script async src="https://your-herald.com/embed.js"></script>
+
+import { embedBasePathFromPathname, embedBasePathForApp } from './embed-base-path';
 
 (function () {
-  // Guard against multiple initialization
+  // Guard against multiple initialization. A second script tag no-ops entirely:
+  // the initializer this one runs already renders every widget on the page,
+  // whichever app each of them names.
   if ((window as any).__heraldInitialized) return;
   (window as any).__heraldInitialized = true;
 
   // Capture currentScript synchronously — becomes null after script execution
   var currentScript = document.currentScript as HTMLScriptElement | null;
 
-  // Derive the Herald origin from the script's src URL
+  // Derive the Herald origin, and the app, from the script's src URL
   var heraldOrigin = '';
+  var scriptBasePath = '';
   if (currentScript && currentScript.src) {
     try {
       var url = new URL(currentScript.src);
       heraldOrigin = url.origin;
+      scriptBasePath = embedBasePathFromPathname(url.pathname);
     } catch (e) {
-      // Fallback: same origin
+      // Fallback: same origin, default app
     }
   }
   if (!heraldOrigin) {
     heraldOrigin = window.location.origin;
   }
 
-  var embedBaseUrl = heraldOrigin + '/embed';
+  // An explicit app on the script tag overrides the URL it was loaded from.
+  if (currentScript) {
+    scriptBasePath = embedBasePathForApp(
+      currentScript.getAttribute('data-herald-app'),
+      scriptBasePath,
+    );
+  }
+
+  /** The app a single widget shows: its own attribute, else the script's. */
+  function basePathFor(target: HTMLElement): string {
+    return embedBasePathForApp(target.getAttribute('data-herald-app'), scriptBasePath);
+  }
 
   // ─── Inline mode styles (CSS custom properties for full customisation) ───
 
@@ -177,6 +205,9 @@
   function injectStyles(): void {
     if (stylesInjected) return;
     stylesInjected = true;
+    // The styles are global, not per widget or per app — one copy is enough
+    // however many changelogs the page renders.
+    if (document.querySelector('style[data-herald-styles]')) return;
     var style = document.createElement('style');
     style.setAttribute('data-herald-styles', '');
     style.textContent = INLINE_STYLES;
@@ -353,7 +384,7 @@
 
   // ─── Inline render: fetch JSON and inject DOM ───
 
-  function renderInline(target: HTMLElement): void {
+  function renderInline(target: HTMLElement, basePath: string): void {
     if (target.querySelector('.herald-changelog')) return;
 
     injectStyles();
@@ -362,7 +393,7 @@
     var limit = limitAttr && /^\d+$/.test(limitAttr) ? parseInt(limitAttr, 10) : undefined;
 
     var xhr = new XMLHttpRequest();
-    xhr.open('GET', heraldOrigin + '/embed.json');
+    xhr.open('GET', heraldOrigin + basePath + '/embed.json');
     xhr.onload = function () {
       if (xhr.status === 200) {
         try {
@@ -378,8 +409,9 @@
 
   // ─── Iframe mode ───
 
-  function createIframe(container: HTMLElement): HTMLIFrameElement {
+  function createIframe(container: HTMLElement, basePath: string): HTMLIFrameElement {
     var iframe = document.createElement('iframe');
+    var embedBaseUrl = heraldOrigin + basePath + '/embed';
     var limit = container.getAttribute('data-herald-limit');
     iframe.src = limit && /^\d+$/.test(limit) ? embedBaseUrl + '#limit=' + limit : embedBaseUrl;
     iframe.style.width = '100%';
@@ -396,18 +428,19 @@
     return iframe;
   }
 
-  function renderIframe(target: HTMLElement): void {
+  function renderIframe(target: HTMLElement, basePath: string): void {
     if (target.querySelector('iframe[data-herald-iframe]')) return;
-    createIframe(target);
+    createIframe(target, basePath);
   }
 
   // ─── Unified render ───
 
   function render(target: HTMLElement): void {
+    var basePath = basePathFor(target);
     if (target.hasAttribute('data-herald-inline')) {
-      renderInline(target);
+      renderInline(target, basePath);
     } else {
-      renderIframe(target);
+      renderIframe(target, basePath);
     }
   }
 
@@ -434,6 +467,8 @@
         render(targets[i]);
       }
     } else if (currentScript && currentScript.parentNode) {
+      // No widgets on the page: drop an iframe where the script sits, showing
+      // the app the script itself names.
       var container = document.createElement('div');
       container.dataset.heraldWidget = '';
       currentScript.parentNode.insertBefore(container, currentScript.nextSibling);
