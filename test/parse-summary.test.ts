@@ -79,8 +79,8 @@ test('empty / whitespace input yields an empty entry', () => {
 });
 
 test('REGRESSION: request disables model reasoning so the answer is never starved to empty', () => {
-  // Reproduces the reported "AI does nothing" bug: the default model (Kimi K2.6)
-  // is a reasoning model whose hidden reasoning is billed against max_tokens. On
+  // Reproduces the reported "AI does nothing" bug: the default model (then Kimi
+  // K2.6) was a reasoning model whose hidden reasoning is billed against max_tokens. On
   // a large commit it spent the whole budget reasoning and returned an empty
   // body, which the queue then silently replaced with the raw commit. Disabling
   // thinking is what keeps the model answering directly.
@@ -91,7 +91,7 @@ test('REGRESSION: request disables model reasoning so the answer is never starve
   }) as { chat_template_kwargs?: Record<string, unknown> };
 
   assert.equal(request.chat_template_kwargs?.thinking, false); // Kimi switch
-  assert.equal(request.chat_template_kwargs?.enable_thinking, false); // Qwen/GLM switch
+  assert.equal(request.chat_template_kwargs?.enable_thinking, false); // DeepSeek/Qwen/Gemma/GLM switch
 });
 
 test('prompt instructs public-facing output, category choice, and the JSON shape', () => {

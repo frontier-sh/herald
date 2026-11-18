@@ -12,7 +12,7 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
-    "types": ["@cloudflare/workers-types", "vite/client"]
+    "types": ["./worker-configuration.d.ts", "vite/client"]
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "vite.config.ts"],
   "exclude": ["node_modules", "dist"]
