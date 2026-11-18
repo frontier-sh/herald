@@ -1,8 +1,6 @@
-export type Bindings = {
-  DB: D1Database;
-  AI: Ai;
-  CHANGELOG_QUEUE: Queue;
-  IMAGE_STORE: R2Bucket;
-  IMAGES: ImagesBinding;
-  BASE_URL: string;
-};
+/**
+ * The Worker's bindings. `Env` is generated from wrangler.jsonc by
+ * `npm run types` (worker-configuration.d.ts) — rerun it after changing a
+ * binding there rather than editing this type by hand.
+ */
+export type Bindings = Env;

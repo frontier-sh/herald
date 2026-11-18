@@ -6,7 +6,7 @@
  * actual `env.AI` call and the queue plumbing.
  */
 
-import { resolveModelId } from './models';
+import { modelRequestParams, resolveModelId } from './models';
 import {
   buildSummarizationRequest,
   coerceSummary,
@@ -62,14 +62,15 @@ export async function summarizeContent(
   projectName?: string,
   projectDescription?: string,
 ): Promise<SummarizedEntry> {
+  const modelId = resolveModelId(model);
   const request = buildSummarizationRequest({
     content,
     category,
     personality,
     projectName,
     projectDescription,
+    modelParams: modelRequestParams(modelId),
   });
-  const modelId = resolveModelId(model);
 
   // JSON mode constrains the model to valid {title, body}; reasoning is disabled
   // so the answer can't be starved to empty by the token budget. coerceSummary()

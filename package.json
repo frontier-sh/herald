@@ -11,22 +11,23 @@
     "db:migrate": "wrangler d1 migrations apply herald-db --local",
     "db:migrate:prod": "wrangler d1 migrations apply herald-db --remote",
     "test": "node --test test/*.test.ts",
+    "types": "wrangler types --strict-vars=false --include-main-module=false",
+    "typecheck": "wrangler types --strict-vars=false --include-main-module=false --check && tsc --noEmit",
     "ai:harness": "node scripts/ai-harness.mjs",
     "update": "bash scripts/update.sh"
   },
   "dependencies": {
     "easymde": "^2.21.0",
-    "hono": "^4.12.18",
-    "marked": "^18.0.3"
+    "hono": "^4.13.19",
+    "marked": "^18.2.1"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20260509.1",
     "@hono/vite-build": "^1.11.1",
-    "@hono/vite-dev-server": "^0.25.3",
-    "@tailwindcss/vite": "^4.3.0",
-    "tailwindcss": "^4.3.0",
-    "typescript": "^6.0.3",
-    "vite": "^8.0.11",
-    "wrangler": "^4.90.0"
+    "@hono/vite-dev-server": "^0.26.1",
+    "@tailwindcss/vite": "^4.3.5",
+    "tailwindcss": "^4.3.5",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8",
+    "wrangler": "^4.165.0"
   }
 }

@@ -22,7 +22,7 @@
  *   npm run ai:harness                       # last 10 non-merge commits of this repo
  *   node scripts/ai-harness.mjs 5            # last 5 commits
  *   node scripts/ai-harness.mjs --files a.txt b.txt   # use file contents as commits
- *   node scripts/ai-harness.mjs --model @cf/meta/llama-3.3-70b-instruct-fp8-fast 5
+ *   node scripts/ai-harness.mjs --model @cf/google/gemma-4-26b-a4b-it 5
  *   node scripts/ai-harness.mjs --category fixed --personality casual 3
  *
  * `--category` is only an optional hint the model may override. By default no
@@ -34,7 +34,7 @@ import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { buildSummarizationRequest, coerceSummary } from '../src/services/changelog-format.ts';
-import { resolveModelId } from '../src/services/models.ts';
+import { modelRequestParams, resolveModelId } from '../src/services/models.ts';
 
 // ── tiny ANSI helpers ─────────────────────────────────────
 const useColor = process.stdout.isTTY;
@@ -177,6 +177,7 @@ async function main() {
       personality: opts.personality,
       projectName: opts.projectName,
       projectDescription: opts.projectDescription,
+      modelParams: modelRequestParams(model),
     });
 
     process.stdout.write(c.dim(`→ ${commit.sha}  `));

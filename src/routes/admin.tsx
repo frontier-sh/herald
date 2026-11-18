@@ -59,7 +59,8 @@ import {
 } from '../services/slack';
 import { createApiKey, listApiKeys, deleteApiKey } from '../services/api-keys';
 import { enqueueAISummarization, extractAIText } from '../services/ai';
-import { resolveModelId } from '../services/models';
+import { modelRequestParams, resolveModelId } from '../services/models';
+import { DISABLE_THINKING } from '../services/changelog-format';
 import { purgePublicCache, purgeImageCache, purgeReleasePages } from '../services/cache';
 import { uploadContentImage, uploadBrandImage, deleteImage } from '../services/images';
 import { listSections, getOrCreateSection } from '../services/sections';
@@ -1849,6 +1850,10 @@ admin.post('/settings/ai/test', async (c) => {
           content: 'Write a brief example changelog entry for a bug fix related to user authentication. Keep it to 2-3 sentences.',
         },
       ],
+      // Same reasoning controls as a real summarization, so the test reflects
+      // the model's actual speed and cost.
+      chat_template_kwargs: DISABLE_THINKING,
+      ...modelRequestParams(model),
     });
 
     const text = extractAIText(response) || 'No response received from AI.';

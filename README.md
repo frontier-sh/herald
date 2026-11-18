@@ -80,6 +80,8 @@ npm run dev
 
 The app runs at `http://localhost:5173`. For local development you'll need to run through the same in-app setup wizard against a tunnel URL (e.g. `cloudflared tunnel`) since GitHub requires HTTPS callback URLs.
 
+Worker types (`worker-configuration.d.ts`) are generated from `wrangler.jsonc`. After changing a binding or the compatibility date, run `npm run types` to regenerate them; `npm run typecheck` fails if they're stale.
+
 ## Authentication
 
 Herald uses a **GitHub App** (created once, per deployment, via the in-app wizard) to gate the admin panel. Only users who are collaborators on the configured repository can sign in.
@@ -237,7 +239,7 @@ jobs:
   changelog:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: frontier-sh/herald/action@main
         with:
           herald-url: ${{ secrets.HERALD_URL }}
@@ -278,7 +280,7 @@ Configurable via the admin panel or the `/api/settings` endpoint:
 | `auto_publish` | false | Automatically publish entries created via API/webhook |
 | `entry_grouping` | category | How entries are grouped on the public changelog (`category` or `section`) |
 | `ai_enabled` | false | Enable AI summarization of raw changelog content |
-| `ai_model` | `@cf/moonshotai/kimi-k2.6` | Cloudflare Workers AI model to use |
+| `ai_model` | `@cf/deepseek-ai/deepseek-v4.1-flash-1017` | Cloudflare Workers AI model to use |
 
 ## Tech Stack
 

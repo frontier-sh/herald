@@ -137,17 +137,19 @@ export const SUMMARIZATION_MAX_TOKENS = 8192;
 /**
  * Disable the model's extended "thinking" / reasoning phase.
  *
- * Reasoning models (the default Kimi K2.6, plus Qwen3 and GLM in the registry)
- * emit hidden reasoning BEFORE the answer, and that reasoning is billed against
+ * Reasoning models (DeepSeek, Qwen, Gemma and GLM in the registry) emit
+ * hidden reasoning BEFORE the answer, and that reasoning is billed against
  * the same `max_tokens` budget. On a large commit the reasoning can consume the
  * entire budget, so the model is cut off (`finish_reason: "length"`) before it
  * writes a single character of the answer — yielding an empty reply that the
  * caller then silently replaced with the raw commit (the "AI does nothing" bug).
  *
  * Reformatting a commit into a one-line changelog needs no chain-of-thought, so
- * we turn it off: `thinking` is Kimi's switch and `enable_thinking` is the
- * Qwen/GLM equivalent. Models that don't recognise these keys ignore them, so
- * it is safe to send to every model in the registry.
+ * we turn it off: `enable_thinking` is the DeepSeek/Qwen/Gemma/GLM switch and
+ * `thinking` is the Kimi-style equivalent. Models that don't recognise these
+ * keys ignore them, so it is safe to send to every model in the registry.
+ * Models whose reasoning is controlled by `reasoning_effort` instead get that
+ * per model, through the registry's `requestParams` (see ./models).
  */
 export const DISABLE_THINKING = { thinking: false, enable_thinking: false } as const;
 
@@ -183,6 +185,11 @@ export function buildSummarizationRequest(opts: {
   personality?: string;
   projectName?: string;
   projectDescription?: string;
+  /**
+   * Per-model request parameters (from modelRequestParams() in ./models),
+   * merged last. Passed in rather than imported to keep this module zero-import.
+   */
+  modelParams?: Readonly<Record<string, unknown>>;
 }) {
   const { system, user } = buildSummarizationPrompt(opts);
   return {
@@ -195,6 +202,7 @@ export function buildSummarizationRequest(opts: {
     // Reasoning is billed against max_tokens and can starve the answer to empty
     // on large commits — turn it off (see DISABLE_THINKING).
     chat_template_kwargs: DISABLE_THINKING,
+    ...opts.modelParams,
   };
 }
 
