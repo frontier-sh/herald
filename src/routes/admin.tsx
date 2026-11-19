@@ -61,6 +61,7 @@ import {
 import { createApiKey, listApiKeys, deleteApiKey } from '../services/api-keys';
 import { enqueueAISummarization, extractAIText } from '../services/ai';
 import { modelRequestParams, resolveModelId } from '../services/models';
+import { resolveThemeId } from '../services/themes';
 import { DISABLE_THINKING } from '../services/changelog-format';
 import { purgePublicCache, purgeImageCache, purgeReleasePages } from '../services/cache';
 import { uploadContentImage, uploadBrandImage, deleteImage } from '../services/images';
@@ -1705,8 +1706,7 @@ admin.post('/settings/theme', async (c) => {
   const app = c.get('currentApp');
   const body = await c.req.parseBody();
   const theme = body['theme'] as string;
-  const validThemes = ['herald', 'opencode', 'notion'];
-  const selectedTheme = validThemes.includes(theme) ? theme : 'herald';
+  const selectedTheme = resolveThemeId(theme);
 
   try {
     await setAppSetting(c.env.DB, app.id, 'theme', selectedTheme);

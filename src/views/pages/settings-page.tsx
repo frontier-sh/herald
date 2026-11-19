@@ -345,7 +345,7 @@ export const AppSettingsPage: FC<AppSettingsPageProps> = ({
                       <td class="text-right">
                         <button
                           type="button"
-                          class="btn btn-danger btn-sm"
+                          class="btn btn-ghost-danger btn-sm"
                           data-delete-key-url={`/admin/settings/keys/${apiKey.id}/delete`}
                           data-delete-key-name={apiKey.name}
                         >

@@ -99,7 +99,7 @@ export const AppEdit: FC<AppEditProps> = ({ app, baseUrl, values }) => {
               data-slug-target
               data-slug-locked={isEditing ? 'true' : undefined}
             />
-            <p class="form-hint">
+            <p class="form-hint app-slug-hint">
               Lowercase letters, numbers and hyphens. The changelog is served at:
             </p>
             <code
@@ -109,12 +109,13 @@ export const AppEdit: FC<AppEditProps> = ({ app, baseUrl, values }) => {
             >
               {publicUrl}
             </code>
-            {app?.is_default && (
+            {/* is_default is a 0/1 number: `&&` would render a stray "0". */}
+            {app?.is_default ? (
               <p class="form-hint">
                 This app is the default, so it is served at the site root and the
                 slug only redirects there.
               </p>
-            )}
+            ) : null}
           </div>
 
           {isEditing && (

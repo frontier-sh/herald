@@ -154,15 +154,23 @@ function collectCategories(releases: ReleaseWithEntries[], standaloneEntries: En
   return CATEGORIES.filter((c) => cats.has(c));
 }
 
+/**
+ * Category colours as CSS custom properties rather than hard-coded colours, so
+ * each theme decides how to use them (tinted pill, coloured text, dot, ...).
+ */
+function categoryStyle(category: Category): string {
+  const colors = CATEGORY_COLORS[category];
+  return `--cat-bg: ${colors.bg}; --cat-text: ${colors.text};`;
+}
+
+function categoryLabel(category: Category): string {
+  return category.charAt(0).toUpperCase() + category.slice(1);
+}
+
 const CategoryGroupEntries: FC<{ entries: EntryWithSection[]; category: Category }> = ({ entries, category }) => (
-  <div class="entry-group" data-category={category}>
+  <div class="entry-group" data-category={category} style={categoryStyle(category)}>
     <h3 class="entry-group-title">
-      <span
-        class="entry-group-badge"
-        style={`background-color: ${CATEGORY_COLORS[category].bg}; color: ${CATEGORY_COLORS[category].text};`}
-      >
-        {category.charAt(0).toUpperCase() + category.slice(1)}
-      </span>
+      <span class="entry-group-badge">{categoryLabel(category)}</span>
     </h3>
     <ul class="entry-group-list">
       {entries.map((entry) => {
@@ -212,7 +220,8 @@ export const EntriesBySectionView: FC<{ entries: EntryWithSection[] }> = ({ entr
             {sectionEnts.map((entry) => {
               const contentHtml = renderMarkdown(entry.content || '');
               return (
-                <li class="entry-section-item" data-category={entry.category}>
+                <li class="entry-section-item" data-category={entry.category} style={categoryStyle(entry.category)}>
+                  <span class="entry-section-item-category">{categoryLabel(entry.category)}</span>
                   <span class="entry-section-item-title">{entry.title}</span>
                   {contentHtml && (
                     <div class="prose entry-section-item-content" dangerouslySetInnerHTML={{ __html: contentHtml }} />
@@ -233,15 +242,15 @@ const ReleaseBlock: FC<{ release: ReleaseWithEntries; useSection: boolean; baseP
   const summaryHtml = renderMarkdown(release.summary || '');
   const releaseHref = `${basePath}/releases/${encodeURIComponent(release.version)}`;
   return (
-    <div class="timeline-release" id={`release-${release.version}`}>
-      <div class="timeline-header">
+    <article class="timeline-release" id={`release-${release.version}`}>
+      <header class="timeline-release-header">
         <a href={releaseHref} class="timeline-version timeline-version-link">{release.version}</a>
-      </div>
-      {release.title && (
-        <h2 class="timeline-release-title">
-          <a href={releaseHref}>{release.title}</a>
-        </h2>
-      )}
+        {release.title && (
+          <h2 class="timeline-release-title">
+            <a href={releaseHref}>{release.title}</a>
+          </h2>
+        )}
+      </header>
       {summaryHtml && (
         <div class="prose timeline-summary" dangerouslySetInnerHTML={{ __html: summaryHtml }} />
       )}
@@ -250,7 +259,7 @@ const ReleaseBlock: FC<{ release: ReleaseWithEntries; useSection: boolean; baseP
       ) : (
         <EntriesByCategoryView entries={release.entries} />
       )}
-    </div>
+    </article>
   );
 };
 
@@ -273,31 +282,39 @@ export const Changelog: FC<ChangelogProps> = ({
   const showHeroTitle = showTitle && !!projectName;
   const showHeroDescription = showDescription && !!projectDescription;
   const heroHasContent = showHeroTitle || showHeroDescription;
+  const showFilters = hasContent && !useSection && allCategories.length > 0;
 
   return (
     <div class="changelog">
-      {heroHasContent && (
-        <div class="changelog-hero">
-          {showHeroTitle && <h1 class="changelog-title">{projectName}</h1>}
-          {showHeroDescription && <p class="changelog-subtitle">{projectDescription}</p>}
-        </div>
-      )}
+      {/* Title, description and filters together, so a theme can place
+          them as one unit (Studio pins them beside the feed). */}
+      {(heroHasContent || showFilters) && (
+        <div class="changelog-intro">
+          {heroHasContent && (
+            <div class="changelog-hero">
+              {showHeroTitle && <h1 class="changelog-title">{projectName}</h1>}
+              {showHeroDescription && <p class="changelog-subtitle">{projectDescription}</p>}
+            </div>
+          )}
 
-      {hasContent && !useSection && allCategories.length > 0 && (
-        <div class="category-filters" id="category-filters">
-          <button class="category-pill active" data-category="all">All</button>
-          {allCategories.map((cat) => {
-            const colors = CATEGORY_COLORS[cat];
-            return (
-              <button
-                class="category-pill"
-                data-category={cat}
-                style={`--pill-bg: ${colors.bg}; --pill-text: ${colors.text};`}
-              >
-                {cat.charAt(0).toUpperCase() + cat.slice(1)}
-              </button>
-            );
-          })}
+          {showFilters && (
+            <div class="category-filters" id="category-filters">
+              <button type="button" class="category-pill active" data-category="all">All</button>
+              {allCategories.map((cat) => {
+                const colors = CATEGORY_COLORS[cat];
+                return (
+                  <button
+                    type="button"
+                    class="category-pill"
+                    data-category={cat}
+                    style={`--pill-bg: ${colors.bg}; --pill-text: ${colors.text};`}
+                  >
+                    {categoryLabel(cat)}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
@@ -305,9 +322,11 @@ export const Changelog: FC<ChangelogProps> = ({
         <div class="changelog-timeline">
           <div class="timeline">
             {buckets.map((bucket) => (
-              <div class="timeline-item" data-timeline-bucket>
-                <div class="timeline-marker"></div>
-                <div class="timeline-content">
+              <section class="timeline-item" data-timeline-bucket>
+                <div class="timeline-marker" aria-hidden="true"></div>
+                {/* The date is a sibling of the content (not inside it) so
+                    themes can place it on the rail, above, or in a column. */}
+                <div class="timeline-date-cell">
                   <time
                     class="timeline-date timeline-date-heading"
                     datetime={toIsoUtc(bucket.date)}
@@ -316,6 +335,8 @@ export const Changelog: FC<ChangelogProps> = ({
                   >
                     {bucketLabel(bucket.date, timezone, dateGrouping)}
                   </time>
+                </div>
+                <div class="timeline-content">
                   {bucket.releases.map((release) => (
                     <ReleaseBlock release={release} useSection={useSection} basePath={basePath} />
                   ))}
@@ -329,7 +350,7 @@ export const Changelog: FC<ChangelogProps> = ({
                     </div>
                   )}
                 </div>
-              </div>
+              </section>
             ))}
           </div>
         </div>

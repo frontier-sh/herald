@@ -32,51 +32,78 @@ export const AppsList: FC<AppsListProps> = ({
       >
         {apps.length > 0 ? (
           <div class="table-container">
-            <table>
+            <table class="apps-table">
               <thead>
                 <tr>
                   <th>Name</th>
-                  <th>URL</th>
-                  <th>Entries</th>
-                  <th class="text-right">Actions</th>
+                  <th class="apps-col-fit">URL</th>
+                  <th class="apps-col-fit apps-col-num">Entries</th>
+                  <th class="apps-col-fit apps-col-actions">
+                    <span class="sr-only">Actions</span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {apps.map((app) => {
                   const basePath = appBasePath(app);
+                  const isCurrent = app.id === currentAppId;
                   return (
                     <tr>
                       <td>
-                        <a href={`/admin/apps/${app.id}`}>
-                          <strong>{app.name}</strong>
-                        </a>{' '}
-                        {app.is_default ? (
-                          <span class="badge badge-published">Default</span>
-                        ) : null}{' '}
-                        {app.id === currentAppId ? (
-                          <span class="badge badge-changed">Selected</span>
-                        ) : null}
+                        <div class="apps-name">
+                          <a href={`/admin/apps/${app.id}`} class="apps-name-link">
+                            {app.name}
+                          </a>
+                          {app.is_default ? (
+                            <span class="badge badge-published">Default</span>
+                          ) : null}
+                          {isCurrent ? (
+                            <span class="badge badge-changed">Selected</span>
+                          ) : null}
+                        </div>
                         {app.description ? (
-                          <div class="text-muted text-sm">{app.description}</div>
+                          <p class="apps-description" title={app.description}>
+                            {app.description}
+                          </p>
                         ) : null}
                       </td>
-                      <td class="text-sm">
-                        <a href={`${baseUrl}${basePath}`} target="_blank" rel="noopener">
+                      <td class="apps-col-fit">
+                        <a
+                          href={`${baseUrl}${basePath}/`}
+                          target="_blank"
+                          rel="noopener"
+                          class="apps-url"
+                          title={`${baseUrl}${basePath}/`}
+                        >
                           <code>{basePath || '/'}</code>
                         </a>
                       </td>
-                      <td class="text-muted text-sm">{entryCounts[app.id] ?? 0}</td>
-                      <td class="text-right">
-                        {/* Every row renders all four action slots in the same
-                            order; inapplicable ones become invisible placeholders
-                            so identical actions align vertically across rows. */}
+                      <td class="apps-col-fit apps-col-num">
+                        {(entryCounts[app.id] ?? 0).toLocaleString('en-US')}
+                      </td>
+                      <td class="apps-col-fit apps-col-actions">
+                        {/* Edit is always last so it lines up down the column;
+                            actions that don't apply to a row are left out. */}
                         <div class="table-actions">
-                          {app.id === currentAppId ? (
-                            <span class="btn btn-secondary btn-sm table-action-placeholder">
-                              Switch
-                            </span>
-                          ) : (
-                            <form method="post" action="/admin/apps/switch" style="margin: 0;">
+                          {app.is_default ? null : (
+                            <button
+                              type="button"
+                              class="btn btn-ghost-danger btn-sm"
+                              data-delete-app-url={`/admin/apps/${app.id}/delete`}
+                              data-delete-app-name={app.name}
+                            >
+                              Delete
+                            </button>
+                          )}
+                          {app.is_default ? null : (
+                            <form method="post" action={`/admin/apps/${app.id}/default`}>
+                              <button type="submit" class="btn btn-ghost btn-sm">
+                                Make default
+                              </button>
+                            </form>
+                          )}
+                          {isCurrent ? null : (
+                            <form method="post" action="/admin/apps/switch">
                               <input type="hidden" name="app_id" value={String(app.id)} />
                               <input type="hidden" name="redirect_to" value="/admin/apps" />
                               <button type="submit" class="btn btn-secondary btn-sm">
@@ -84,38 +111,9 @@ export const AppsList: FC<AppsListProps> = ({
                               </button>
                             </form>
                           )}
-                          {app.is_default ? (
-                            <span class="btn btn-ghost btn-sm table-action-placeholder">
-                              Make default
-                            </span>
-                          ) : (
-                            <form
-                              method="post"
-                              action={`/admin/apps/${app.id}/default`}
-                              style="margin: 0;"
-                            >
-                              <button type="submit" class="btn btn-ghost btn-sm">
-                                Make default
-                              </button>
-                            </form>
-                          )}
-                          <a href={`/admin/apps/${app.id}`} class="btn btn-ghost btn-sm">
+                          <a href={`/admin/apps/${app.id}`} class="btn btn-secondary btn-sm">
                             Edit
                           </a>
-                          {app.is_default ? (
-                            <span class="btn btn-danger btn-sm table-action-placeholder">
-                              Delete
-                            </span>
-                          ) : (
-                            <button
-                              type="button"
-                              class="btn btn-danger btn-sm"
-                              data-delete-app-url={`/admin/apps/${app.id}/delete`}
-                              data-delete-app-name={app.name}
-                            >
-                              Delete
-                            </button>
-                          )}
                         </div>
                       </td>
                     </tr>

@@ -1,6 +1,7 @@
 import type { FC } from 'hono/jsx';
 import { ClientHead, ClientBody } from '../components/client-assets';
 import { DEFAULT_FAVICON } from '../components/default-favicon';
+import { themeFontsHref } from '../../services/themes';
 
 interface PublicLayoutProps {
   children: any;
@@ -64,6 +65,7 @@ export const PublicLayout: FC<PublicLayoutProps> = ({
           href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,200..800&family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=JetBrains+Mono:wght@400;500;600&display=swap"
           rel="stylesheet"
         />
+        {themeFontsHref(theme) && <link href={themeFontsHref(theme)} rel="stylesheet" />}
         <link rel="alternate" type="application/rss+xml" title={`${displayName} RSS Feed`} href={feedHref} />
         <link rel="icon" href={faviconUrl || DEFAULT_FAVICON} />
         <ClientHead />

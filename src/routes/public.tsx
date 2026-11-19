@@ -16,6 +16,7 @@ import { PublicLayout } from '../views/layouts/public-layout';
 import { EmbedLayout } from '../views/layouts/embed-layout';
 import { Changelog } from '../views/pages/changelog';
 import { ReleaseDetail } from '../views/pages/release-detail';
+import { resolveThemeId } from '../services/themes';
 
 interface ReleaseWithEntries extends Release {
   entries: EntryWithSection[];
@@ -74,7 +75,7 @@ export async function fetchChangelogData(db: D1Database, appId: number) {
   const faviconUrl = faviconKey ? `/images/${faviconKey}` : null;
   const entryGrouping = (settings['entry_grouping'] as 'category' | 'section') || 'category';
 
-  const theme = settings['theme'] || 'herald';
+  const theme = resolveThemeId(settings['theme']);
   const primaryColor = settings['primary_color'] || '';
   const timezone = settings['timezone'] || 'UTC';
   const dateGrouping = (settings['date_grouping'] as 'day' | 'month') || 'day';
@@ -238,7 +239,7 @@ const releasePage: PublicHandler = async (c) => {
   const logoUrl = logoKey ? `/images/${logoKey}` : null;
   const faviconUrl = faviconKey ? `/images/${faviconKey}` : null;
   const entryGrouping = (settings['entry_grouping'] as 'category' | 'section') || 'category';
-  const theme = settings['theme'] || 'herald';
+  const theme = resolveThemeId(settings['theme']);
   const primaryColor = settings['primary_color'] || '';
   const timezone = settings['timezone'] || 'UTC';
   const hideAttribution = settings['hide_attribution'] === 'true';
