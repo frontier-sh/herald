@@ -1,6 +1,7 @@
 import type { FC } from 'hono/jsx';
 import { ClientHead } from '../components/client-assets';
 import { DEFAULT_FAVICON } from '../components/default-favicon';
+import { themeFontsHref } from '../../services/themes';
 import { html } from 'hono/html';
 
 interface EmbedLayoutProps {
@@ -24,6 +25,7 @@ export const EmbedLayout: FC<EmbedLayoutProps> = ({ children, faviconUrl, theme,
           href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,200..800&family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=JetBrains+Mono:wght@400;500;600&display=swap"
           rel="stylesheet"
         />
+        {themeFontsHref(theme) && <link href={themeFontsHref(theme)} rel="stylesheet" />}
         <link rel="icon" href={faviconUrl || DEFAULT_FAVICON} />
         <ClientHead />
       </head>

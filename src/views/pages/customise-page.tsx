@@ -2,7 +2,8 @@ import type { FC } from 'hono/jsx';
 import type { Release, EntryWithSection } from '../../db/schema';
 import { SettingsSection } from '../components/settings-form';
 import { ScopeBanner } from '../components/scope-banner';
-import { Changelog } from './changelog';
+import { Changelog, CATEGORY_COLORS } from './changelog';
+import { CHANGELOG_THEMES, resolveThemeId } from '../../services/themes';
 import { listTimezones } from '../../services/datetime';
 
 interface ReleaseWithEntries extends Release {
@@ -28,35 +29,8 @@ const UploadIcon = () => (
   </svg>
 );
 
-const THEMES = [
-  {
-    id: 'herald',
-    name: 'Herald',
-    description: 'Clean timeline with colorful badges',
-    previewBg: '#FAFAF9',
-    previewAccent: '#4F46E5',
-    previewText: '#1C1917',
-    previewBadges: ['#D1FAE5', '#DBEAFE', '#EDE9FE'],
-  },
-  {
-    id: 'opencode',
-    name: 'OpenCode',
-    description: 'Dark monospace developer style',
-    previewBg: '#0a0a0a',
-    previewAccent: '#e5e5e5',
-    previewText: '#e5e5e5',
-    previewBadges: ['#1a1a1a', '#1a1a1a', '#1a1a1a'],
-  },
-  {
-    id: 'notion',
-    name: 'Notion',
-    description: 'Minimal editorial layout',
-    previewBg: '#FFFFFF',
-    previewAccent: '#111111',
-    previewText: '#37352F',
-    previewBadges: ['#E8F5E9', '#E3F2FD', '#F3E8FD'],
-  },
-];
+/** Sample categories drawn in each theme thumbnail. */
+const THUMB_CATEGORIES = ['added', 'changed', 'fixed'] as const;
 
 export const CustomisePage: FC<CustomisePageProps> = ({
   settings,
@@ -73,7 +47,7 @@ export const CustomisePage: FC<CustomisePageProps> = ({
   const faviconKey = settings['favicon_image_key'] ?? '';
   const logoUrl = logoKey ? `/images/${logoKey}` : null;
   const faviconUrl = faviconKey ? `/images/${faviconKey}` : null;
-  const currentTheme = settings['theme'] || 'herald';
+  const currentTheme = resolveThemeId(settings['theme']);
   const primaryColor = settings['primary_color'] || '#4F46E5';
   const currentTimezone = settings['timezone'] || 'UTC';
   const dateGrouping = settings['date_grouping'] || 'day';
@@ -246,8 +220,13 @@ export const CustomisePage: FC<CustomisePageProps> = ({
           <div class="form-group">
             <label class="form-label">Theme</label>
             <p class="form-hint">Choose a visual style for your public changelog.</p>
+            {/* Theme fonts beyond the base set, so thumbnails and the live
+                preview render in each theme's real typeface. */}
+            {CHANGELOG_THEMES.filter((theme) => theme.fontsHref).map((theme) => (
+              <link href={theme.fontsHref} rel="stylesheet" />
+            ))}
             <div class="theme-picker">
-              {THEMES.map((theme) => (
+              {CHANGELOG_THEMES.map((theme) => (
                 <label class={`theme-card${currentTheme === theme.id ? ' active' : ''}`}>
                   <input
                     type="radio"
@@ -257,19 +236,23 @@ export const CustomisePage: FC<CustomisePageProps> = ({
                     checked={currentTheme === theme.id}
                   />
                   <div
-                    class="theme-card-preview"
-                    style={`background-color: ${theme.previewBg};`}
+                    class="theme-thumb"
+                    data-theme={theme.id}
+                    style={`--color-primary: ${primaryColor}`}
+                    aria-hidden="true"
                   >
-                    <div class="theme-card-preview-lines">
-                      <div class="theme-card-preview-title" style={`background-color: ${theme.previewText};`}></div>
-                      <div class="theme-card-preview-subtitle" style={`background-color: ${theme.previewText}; opacity: 0.3;`}></div>
-                      <div class="theme-card-preview-badges">
-                        {theme.previewBadges.map((color) => (
-                          <div class="theme-card-preview-badge" style={`background-color: ${color};`}></div>
+                    <div class="theme-thumb-title">Changelog</div>
+                    <div class="theme-thumb-card">
+                      <div class="theme-thumb-chips">
+                        {THUMB_CATEGORIES.map((category) => (
+                          <span
+                            class="theme-thumb-chip"
+                            style={`--cat-bg: ${CATEGORY_COLORS[category].bg}; --cat-text: ${CATEGORY_COLORS[category].text};`}
+                          ></span>
                         ))}
                       </div>
-                      <div class="theme-card-preview-line" style={`background-color: ${theme.previewText}; opacity: 0.15;`}></div>
-                      <div class="theme-card-preview-line" style={`background-color: ${theme.previewText}; opacity: 0.1;`}></div>
+                      <div class="theme-thumb-line"></div>
+                      <div class="theme-thumb-line"></div>
                     </div>
                   </div>
                   <div class="theme-card-name">{theme.name}</div>
