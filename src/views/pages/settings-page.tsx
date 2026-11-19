@@ -30,6 +30,7 @@ export const AppSettingsPage: FC<AppSettingsPageProps> = ({
 }) => {
   const sourceRepo = settings['source_repo'] || '';
   const autoPublish = settings['auto_publish'] === 'true';
+  const ignoredPaths = settings['ignored_paths'] || '';
   const aiEnabled = settings['ai_enabled'] === 'true';
   const aiPersonality = settings['ai_personality'] || 'neutral';
   const timezone = settings['timezone'] || 'UTC';
@@ -169,6 +170,39 @@ export const AppSettingsPage: FC<AppSettingsPageProps> = ({
                 </button>
               </div>
             </noscript>
+          </form>
+        </SettingsSection>
+
+        {/* Ignored paths */}
+        <SettingsSection
+          title="Ignored paths"
+          description="Changes that only touch these paths never become changelog entries."
+        >
+          <form method="post" action="/admin/settings/ignored-paths">
+            <div class="form-group">
+              <label for="ignored_paths" class="form-label">Paths</label>
+              <textarea
+                id="ignored_paths"
+                name="ignored_paths"
+                class="form-textarea form-textarea-mono"
+                rows={5}
+                placeholder={'tests/\napp/Console/Commands/'}
+                autocapitalize="off"
+                spellcheck={false}
+              >
+                {ignoredPaths}
+              </textarea>
+              <span class="settings-toggle-hint">
+                One pattern per line, .gitignore style: <code>tests/</code> matches everything
+                under that folder, <code>*.md</code> matches at any depth, and <code>**</code> spans
+                folders. A commit is skipped only when every file it changes matches. If it
+                also touches other files, it still counts. Applies to updates sent by the
+                Herald GitHub Action.
+              </span>
+            </div>
+            <div class="settings-section-footer">
+              <button type="submit" class="btn btn-primary">Save</button>
+            </div>
           </form>
         </SettingsSection>
 

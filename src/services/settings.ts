@@ -28,6 +28,7 @@ export const PER_APP_SETTING_KEYS: readonly string[] = [
   'slack_webhook_url',
   'slack_notifications_enabled',
   'source_repo',
+  'ignored_paths',
 ] as const;
 
 // ─── Global settings ────────────────────────────────────

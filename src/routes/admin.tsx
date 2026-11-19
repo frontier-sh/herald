@@ -34,6 +34,7 @@ import {
   setAppSetting,
   deleteAppSetting,
 } from '../services/settings';
+import { IGNORED_PATHS_SETTING, normalizeIgnorePatterns } from '../services/ignored-paths';
 import {
   listApps,
   getApp,
@@ -1780,6 +1781,23 @@ admin.post('/settings/publishing', async (c) => {
     setFlash(c, 'success', 'Publishing settings saved successfully.');
   } catch (err) {
     setFlash(c, 'error', 'Failed to save publishing settings.');
+  }
+
+  return c.redirect('/admin/settings');
+});
+
+// ─── Settings: Ignored paths ────────────────────────────
+
+admin.post('/settings/ignored-paths', async (c) => {
+  const app = c.get('currentApp');
+  const body = await c.req.parseBody();
+  const value = normalizeIgnorePatterns((body['ignored_paths'] as string) || '');
+
+  try {
+    await setAppSetting(c.env.DB, app.id, IGNORED_PATHS_SETTING, value);
+    setFlash(c, 'success', value ? 'Ignored paths saved.' : 'Ignored paths cleared.');
+  } catch (err) {
+    setFlash(c, 'error', 'Failed to save ignored paths.');
   }
 
   return c.redirect('/admin/settings');

@@ -28,6 +28,12 @@ import {
   PER_APP_SETTING_KEYS,
 } from '../services/settings';
 import { getApp } from '../services/apps';
+import {
+  IGNORED_PATHS_SETTING,
+  applyIgnoredPaths,
+  compileIgnorePatterns,
+  parseIgnorePatterns,
+} from '../services/ignored-paths';
 import { notifyEntryPublished, notifyReleasePublishedWhenReady } from '../services/slack';
 import {
   createApiKey,
@@ -492,6 +498,9 @@ api.post('/webhook', async (c) => {
         category?: Category;
         section_name?: string;
         commit_sha?: string;
+        // The commits `content` was auto-built from, each with its changed
+        // files. Sent by the GitHub Action; used to apply ignored paths.
+        commits?: unknown;
       }>;
     }>();
 
@@ -526,11 +535,34 @@ api.post('/webhook', async (c) => {
       body.release?.publish === true &&
       (!existingRelease || existingRelease.status !== 'published');
 
+    // Changes that only touch the app's ignored paths (tests, console
+    // commands, …) are dropped here rather than becoming public entries.
+    const ignoreMatchers = compileIgnorePatterns(
+      parseIgnorePatterns(await getAppSetting(c.env.DB, appId, IGNORED_PATHS_SETTING)),
+    );
+
     const created = [];
-    for (const item of body.entries) {
-      if (!item.title) {
+    const skipped: Array<{ title: string; reason: 'ignored_paths'; ignored_commits: number }> = [];
+    for (const rawItem of body.entries) {
+      if (!rawItem.title) {
         return c.json({ error: 'Each entry must have a title' }, 400);
       }
+
+      const filtered = applyIgnoredPaths(rawItem, ignoreMatchers);
+      if (filtered.skip) {
+        skipped.push({
+          title: rawItem.title,
+          reason: 'ignored_paths',
+          ignored_commits: filtered.ignoredCommits,
+        });
+        continue;
+      }
+      const item = {
+        ...rawItem,
+        title: filtered.title,
+        content: filtered.content,
+        commit_sha: filtered.commit_sha,
+      };
 
       let sectionId: number | null = null;
       if (item.section_name?.trim()) {
@@ -628,7 +660,7 @@ api.post('/webhook', async (c) => {
       c.executionCtx.waitUntil(purgeAppReleasePages(c, appId, [version]));
     }
 
-    return c.json({ release: releaseResponse, entries: created }, 201);
+    return c.json({ release: releaseResponse, entries: created, skipped }, 201);
   } catch (err) {
     return c.json({ error: 'Failed to process webhook' }, 500);
   }
