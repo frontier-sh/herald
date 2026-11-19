@@ -77,6 +77,14 @@ write_empty_outputs() {
   write_output "release-url" ""
 }
 
+# Scratch space for anything too large to pass as a command-line argument
+# (per-commit file lists, the request payload, the response).
+WORK_DIR="$(mktemp -d)"
+trap 'rm -rf "$WORK_DIR"' EXIT
+COMMITS_FILE="$WORK_DIR/commits.json"
+PAYLOAD_FILE="$WORK_DIR/payload.json"
+BODY_FILE="$WORK_DIR/body.json"
+
 # ─── Determine commit range / title / content ─────────────
 
 ZERO_SHA="0000000000000000000000000000000000000000"
@@ -94,10 +102,11 @@ if [[ -n "${HERALD_INCLUDE_PATHS:-}" ]]; then
   done
 fi
 
-LOG_FLAGS=("--format=- %s")
+MERGE_FLAGS=()
 if ! is_truthy "${HERALD_INCLUDE_MERGES:-false}"; then
-  LOG_FLAGS+=("--no-merges")
+  MERGE_FLAGS+=("--no-merges")
 fi
+LOG_FLAGS=("--format=- %s" ${MERGE_FLAGS[@]+"${MERGE_FLAGS[@]}"})
 
 run_git_log_range() {
   local before="$1"
@@ -117,8 +126,33 @@ run_git_log_head() {
   fi
 }
 
+# The commits behind auto-collected content, as JSON
+# [{sha, subject, files: [...]}] (newest first, same order and filters as the
+# content). Herald uses the file lists to apply the app's "Ignored paths"
+# setting, so changes that only touch e.g. tests/ never reach the changelog.
+# Takes the same revision arguments as `git log` (a range, or `-1`).
+collect_commits_json() {
+  local args=("$@")
+  if [[ ${#PATH_ARGS[@]} -gt 0 ]]; then
+    args+=(-- "${PATH_ARGS[@]}")
+  fi
+  local log
+  log="$(git -c core.quotePath=false log ${MERGE_FLAGS[@]+"${MERGE_FLAGS[@]}"} \
+    --format='%x1e%H%x1f%s' --name-only "${args[@]}" 2>/dev/null)" || log=""
+  printf '%s' "$log" | jq -Rs '
+        split("\u001e")
+        | map(select(length > 0)
+          | split("\n") as $lines
+          | ($lines[0] | split("\u001f")) as $head
+          | {sha: $head[0],
+             subject: ($head[1:] | join("\u001f")),
+             files: ($lines[1:] | map(select(length > 0)))})' \
+    2>/dev/null || echo '[]'
+}
+
 TITLE="${HERALD_TITLE:-}"
 CONTENT="${HERALD_CONTENT:-}"
+echo '[]' > "$COMMITS_FILE"
 
 if [[ "$EVENT_NAME" = "release" ]]; then
   TITLE="${TITLE:-$RELEASE_NAME}"
@@ -130,6 +164,7 @@ else
   if [[ -z "$CONTENT" ]]; then
     if [[ -n "${EVENT_BEFORE:-}" && "$EVENT_BEFORE" != "$ZERO_SHA" && -n "${EVENT_AFTER:-}" ]]; then
       CONTENT="$(run_git_log_range "$EVENT_BEFORE" "$EVENT_AFTER")"
+      collect_commits_json "$EVENT_BEFORE".."$EVENT_AFTER" > "$COMMITS_FILE"
       if [[ -z "$CONTENT" && ${#PATH_ARGS[@]} -gt 0 ]]; then
         echo "::notice::No commits in range matched include-paths; skipping Herald post."
         write_empty_outputs
@@ -138,12 +173,14 @@ else
       if [[ -z "$CONTENT" ]]; then
         echo "::warning::No commits found in range ${EVENT_BEFORE}..${EVENT_AFTER}; falling back to HEAD."
         CONTENT="$(run_git_log_head)"
+        collect_commits_json -1 > "$COMMITS_FILE"
       fi
     else
       if [[ "${EVENT_BEFORE:-}" = "$ZERO_SHA" ]]; then
         echo "::warning::Initial push detected (before=zeros); falling back to HEAD commit only."
       fi
       CONTENT="$(run_git_log_head)"
+      collect_commits_json -1 > "$COMMITS_FILE"
     fi
   fi
 fi
@@ -224,10 +261,18 @@ else
   JSON=$(jq -n --argjson entry "$ENTRY" '{entries: [$entry]}')
 fi
 
-# ─── POST to Herald ───────────────────────────────────────
+# Attach the per-commit file lists (only present for auto-collected content,
+# never with an explicit `content` input, since Herald rebuilds the content
+# from whichever commits survive the app's ignored paths). Older Herald
+# versions ignore the field. Read from a file: it can be large.
+if jq -e 'type == "array" and length > 0' "$COMMITS_FILE" >/dev/null 2>&1; then
+  jq --slurpfile commits "$COMMITS_FILE" '.entries[0] += {commits: $commits[0]}' \
+    <<< "$JSON" > "$PAYLOAD_FILE"
+else
+  printf '%s' "$JSON" > "$PAYLOAD_FILE"
+fi
 
-BODY_FILE="$(mktemp)"
-trap 'rm -f "$BODY_FILE"' EXIT
+# ─── POST to Herald ───────────────────────────────────────
 
 set +e
 HTTP_CODE=$(curl -sS \
@@ -238,7 +283,7 @@ HTTP_CODE=$(curl -sS \
   -X POST "${HERALD_URL}/api/webhook" \
   -H "Authorization: Bearer ${HERALD_API_KEY}" \
   -H "Content-Type: application/json" \
-  -d "$JSON")
+  --data-binary @"$PAYLOAD_FILE")
 CURL_EXIT=$?
 set -e
 
@@ -255,7 +300,7 @@ if [[ "$HTTP_CODE" -lt 200 || "$HTTP_CODE" -ge 300 ]]; then
   exit 1
 fi
 
-echo "Successfully sent changelog entry to Herald"
+echo "Sent changelog update to Herald"
 echo "$BODY" | jq . 2>/dev/null || echo "$BODY"
 
 # ─── Parse response and write outputs ─────────────────────
@@ -267,6 +312,10 @@ if ! echo "$BODY" | jq -e . >/dev/null 2>&1; then
 fi
 
 ENTRY_IDS=$(echo "$BODY" | jq -r '[.entries[]?.id] | join(",")')
+SKIPPED_COUNT=$(echo "$BODY" | jq -r '[.skipped[]?] | length')
+if [[ "$SKIPPED_COUNT" -gt 0 ]]; then
+  echo "::notice::Herald skipped ${SKIPPED_COUNT} entry(ies): every commit only touched paths this app ignores (Settings > Ignored paths)."
+fi
 ENTRY_COUNT=$(echo "$BODY" | jq -r '[.entries[]?.id] | length')
 RELEASE_ID=$(echo "$BODY" | jq -r '.release.id // empty')
 RELEASE_VERSION=$(echo "$BODY" | jq -r '.release.version // empty')

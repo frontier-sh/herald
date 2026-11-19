@@ -14,6 +14,7 @@ A self-hosted changelog solution that makes it easy to track, manage, and publis
 - Categorize changes (Added, Changed, Fixed, Removed, Deprecated, Security)
 - Organize entries by product area sections (e.g. Core, Desktop, API)
 - Group entries into versioned releases
+- Ignore internal-only changes (e.g. `tests/`) so they never reach the public changelog
 - AI-powered summarization via Cloudflare Workers AI
 - REST API + GitHub Action for CI/CD automation
 - RSS feed for subscribers
@@ -96,6 +97,28 @@ The App only needs `metadata: read` — just enough to confirm repo access on lo
 ### Generate from commits (optional)
 
 To draft changelog entries from a repository's recent commits, go to **Settings > Generate from commits** and set a **Repository** (`owner/repo`) plus a **GitHub token** — a fine-grained personal access token with read-only **Contents** access to that repo (or a classic token with the `repo` scope). The token is stored in D1 and used only to read commits; commit reading is fully decoupled from login.
+
+### Ignored paths (optional)
+
+Some changes never matter to your users: tests, console commands, CI config. List their paths under **Settings > Ignored paths** (per app), one per line in `.gitignore` style. For a Laravel app:
+
+```
+tests/
+app/Console/Commands/
+```
+
+- **`tests/`** matches everything under that top-level folder.
+- **`*.md`** has no `/`, so it matches at any depth.
+- **`**`** spans folders. `*` and `?` stay within one folder.
+- **`#` comments** and blank lines are allowed.
+
+Herald filters per commit, as updates arrive from the GitHub Action:
+
+- A commit whose files are *all* ignored is dropped from the entry.
+- A commit that also touches other files (a feature plus its tests) still counts.
+- If every commit in a push is ignored, no entry is created.
+
+When the newest commit is dropped, the entry's title and commit SHA move to the newest commit that remains. The filter needs the changed-file data the Action sends, so it doesn't apply to entries written by hand, to entries with explicit `content`, or to **Generate from commits**.
 
 ### Re-running setup
 
@@ -206,6 +229,8 @@ curl -X POST https://herald.example.com/api/webhook \
     ]
   }'
 ```
+
+**Ignored paths:** each entry can carry an optional `commits` array listing the commits its `content` was built from. Each item has a `sha`, a `subject` and `files` (repo-relative paths). The GitHub Action sends this automatically. When the app has [ignored paths](#ignored-paths-optional), Herald drops commits whose files are all ignored and rebuilds `content` as one `- subject` line per remaining commit. If every commit is ignored, the entry is skipped and listed in the response's `skipped` array instead of `entries`. Entries without `commits` are never filtered.
 
 ### Settings
 

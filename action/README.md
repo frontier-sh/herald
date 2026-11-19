@@ -101,6 +101,10 @@ jobs:
 
 When `include-paths` is set and no commits in the range touch those paths, the action emits a `::notice::`, exits successfully, and produces empty outputs.
 
+### Ignoring tests, console commands, etc.
+
+To keep internal-only changes off the public changelog, list them in Herald under **Settings > Ignored paths**. No workflow change is needed. On push events the action sends each commit's changed files along with the entry. Herald drops commits that only touch ignored paths, and skips the entry entirely when every commit in the push is ignored. In that case the action emits a `::notice::` and `entry-count` is `0`. Explicit `content` inputs and `release` events aren't filtered.
+
 ### Manual dispatch
 
 ```yaml
@@ -182,6 +186,8 @@ jobs:
 **`Initial push detected; falling back to HEAD commit only`** -- expected on the first push to a branch where there is no `before` SHA.
 
 **`No commits in range matched include-paths; skipping`** -- the `include-paths` filter excluded everything in the range. The action exits successfully with empty outputs.
+
+**`Herald skipped N entry(ies): every commit only touched paths this app ignores`** -- every commit in the push matched the app's **Settings > Ignored paths**, so no entry was created. Expected for e.g. tests-only pushes.
 
 **`Invalid category`** -- when supplied, `category` must be one of `added`, `changed`, `fixed`, `removed`, `deprecated`, `security`. Leave it unset to let Herald categorize automatically.
 
