@@ -44,7 +44,7 @@ export const SlackSettings: FC<SlackSettingsProps> = ({ connected, enabled, proj
         </div>
         <span class="form-hint slack-test-result" data-slack-test-result hidden></span>
 
-        <div class="settings-toggle-row">
+        <div class="settings-toggle-row slack-notifications-row">
           <div class="settings-toggle-info">
             <span class="settings-toggle-label">Send notifications</span>
             <span class="settings-toggle-hint">Pause without removing your webhook URL.</span>

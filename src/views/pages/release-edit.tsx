@@ -212,11 +212,8 @@ export const ReleaseEdit: FC<ReleaseEditProps> = ({
                               value={String(entry.id)}
                               checked={releaseEntryIds.has(entry.id)}
                             />
+                            {/* Section and category are already the group headers. */}
                             <span class="entry-selector-title">{entry.title}</span>
-                            <CategoryBadge category={entry.category} />
-                            {entry.section_name && (
-                              <span class="text-sm text-muted">({entry.section_name})</span>
-                            )}
                           </label>
                         ))}
                       </div>

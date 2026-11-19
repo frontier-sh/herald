@@ -16,6 +16,7 @@
 
   /* Colors - Neutral */
   --color-bg: #FAFAF9;
+  --color-bg-secondary: #F5F5F4;
   --color-surface: #FFFFFF;
   --color-border: #E7E5E4;
   --color-border-hover: #D6D3D1;
@@ -417,6 +418,19 @@ pre code {
   color: var(--color-text);
 }
 
+.btn-ghost-danger {
+  background-color: transparent;
+  color: var(--color-danger);
+  border-color: transparent;
+}
+
+/* Row-level destructive action: quiet until hovered, so a table of rows
+   isn't a column of red buttons. */
+.btn-ghost-danger:hover:not(:disabled) {
+  background-color: var(--color-danger-bg);
+  color: var(--color-danger);
+}
+
 .btn-sm {
   padding: var(--space-1) var(--space-3);
   font-size: var(--text-xs);
@@ -551,6 +565,12 @@ pre code {
   margin-top: var(--space-1);
 }
 
+/* A hint that closes its field already sits above the group's own bottom
+   margin; the global paragraph margin would double the gap. */
+.form-group > .form-hint:last-child {
+  margin-bottom: 0;
+}
+
 .form-input,
 .form-select,
 .form-textarea {
@@ -647,6 +667,12 @@ th {
   border-bottom: 1px solid var(--color-border);
 }
 
+/* Tailwind's text-right lives in a cascade layer, which the unlayered th rule
+   above outranks. */
+th.text-right {
+  text-align: right;
+}
+
 td {
   padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--color-border);
@@ -669,11 +695,68 @@ tbody tr:hover {
   gap: var(--space-2);
 }
 
-/* Keeps a slot's width when its action doesn't apply to the row, so the
-   same action lands in the same place in every row. */
-.table-action-placeholder {
-  visibility: hidden;
+.table-actions form {
+  margin: 0;
 }
+
+/* Admin apps list. The name column takes the spare width; the rest shrink
+   to their content and never wrap. */
+.apps-table td {
+  padding-top: var(--space-4);
+  padding-bottom: var(--space-4);
+}
+
+.apps-table .apps-col-fit {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.apps-table .apps-col-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-secondary);
+}
+
+.apps-table .apps-col-actions {
+  text-align: right;
+}
+
+.apps-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.apps-name-link {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.apps-name-link:hover {
+  color: var(--color-primary);
+}
+
+/* Clamped to one line; the full text is in the title tooltip and on the edit
+   page. A line clamp (not nowrap) so the column can still shrink to fit the
+   actions. */
+.apps-description {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
+  overflow: hidden;
+  margin: var(--space-1) 0 0;
+  max-width: 60ch;
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
+.apps-url code {
+  font-size: var(--text-xs);
+}
+
+
 
 /* ============================================
    Alerts & Notifications
@@ -1207,7 +1290,7 @@ tbody tr:hover {
    ============================================ */
 .quick-actions {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: var(--space-4);
 }
 
@@ -1235,7 +1318,13 @@ tbody tr:hover {
 }
 
 .quick-action-icon {
-  font-size: var(--text-2xl);
+  display: flex;
+  color: var(--color-text-secondary);
+  transition: color var(--transition-fast);
+}
+
+.quick-action-card:hover .quick-action-icon {
+  color: var(--color-primary);
 }
 
 /* ============================================
@@ -1599,6 +1688,10 @@ tbody tr:hover {
   gap: var(--space-4);
 }
 
+.settings-toggle-row + .settings-toggle-row {
+  margin-top: var(--space-4);
+}
+
 .settings-toggle-info {
   display: flex;
   flex-direction: column;
@@ -1789,6 +1882,11 @@ tbody tr:hover {
 .slack-test-result {
   display: block;
   margin-top: var(--space-2);
+}
+
+/* Separates the pause toggle from the connected card above it. */
+.slack-notifications-row {
+  margin-top: var(--space-6);
 }
 
 /* ── Setup modal ───────────────────────────── */
@@ -3377,15 +3475,16 @@ tbody tr:hover {
 /* ============================================
    Section Headings (release edit + public)
    ============================================ */
+/* Section bands: same inset as the category groups, and a divider between
+   sections (the last group in a section drops its own bottom border). */
 .entry-selector-section-header {
-  padding: var(--space-2) var(--space-3);
-  margin-top: var(--space-3);
+  padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--color-border);
   font-size: var(--text-sm);
 }
 
-.entry-selector-section-header:first-child {
-  margin-top: 0;
+.entry-selector > div + div {
+  border-top: 1px solid var(--color-border);
 }
 
 /* ============================================
@@ -4490,6 +4589,11 @@ tbody tr:hover {
   .scope-banner-url {
     margin-left: 0;
   }
+}
+
+/* Lead-in to the URL preview directly below it. */
+.form-hint.app-slug-hint {
+  margin-bottom: var(--space-2);
 }
 
 .settings-code {

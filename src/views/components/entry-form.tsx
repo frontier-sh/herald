@@ -59,7 +59,6 @@ export const EntryForm: FC<EntryFormProps> = ({
               {/* Populated by JS */}
             </div>
           </div>
-          <p class="form-hint">Optional. Type to pick or create a section.</p>
           <script
             type="application/json"
             id="section-data"
@@ -67,6 +66,7 @@ export const EntryForm: FC<EntryFormProps> = ({
               __html: JSON.stringify(sections.map((s) => s.name)).replace(/<\//g, '<\\/'),
             }}
           />
+          <p class="form-hint">Optional. Type to pick or create a section.</p>
         </div>
 
         <div class="form-group form-group-half">

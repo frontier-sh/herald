@@ -69,19 +69,40 @@ export const Dashboard: FC<DashboardProps> = ({
         <h2>Quick Actions</h2>
         <div class="quick-actions">
           <a href="/admin/entries/new" class="quick-action-card">
-            <span class="quick-action-icon">+</span>
+            <span class="quick-action-icon">
+              <svg width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M8 3v10M3 8h10" />
+              </svg>
+            </span>
             <span>New Entry</span>
           </a>
           <a href="/admin/generate" class="quick-action-card">
-            <span class="quick-action-icon">{'\u2728'}</span>
+            <span class="quick-action-icon">
+              <svg width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M2 5a3 1.5 0 0 0 6 0 3 1.5 0 0 0-6 0v6a3 1.5 0 0 0 6 0V5" />
+                <path d="M11.5 8.5l1.25 1.25L15 7.25" />
+              </svg>
+            </span>
             <span>Generate from Commits</span>
           </a>
           <a href="/admin/releases" class="quick-action-card">
-            <span class="quick-action-icon">{'\u2696'}</span>
+            <span class="quick-action-icon">
+              <svg width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M1.5 3.5a2 2 0 0 1 2-2h3.672a2 2 0 0 1 1.414.586l5.828 5.828a2 2 0 0 1 0 2.828l-3.672 3.672a2 2 0 0 1-2.828 0L2.086 8.586A2 2 0 0 1 1.5 7.172V3.5z" />
+                <circle cx="5" cy="5" r=".75" fill="currentColor" />
+              </svg>
+            </span>
             <span>Manage Releases</span>
           </a>
           <a href="/admin/settings" class="quick-action-card">
-            <span class="quick-action-icon">{'\u2699'}</span>
+            <span class="quick-action-icon">
+              <svg width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M2 4h3M9 4h5M2 8h7M13 8h1M2 12h1M7 12h7" />
+                <circle cx="7" cy="4" r="1.5" />
+                <circle cx="11.5" cy="8" r="1.5" />
+                <circle cx="4.5" cy="12" r="1.5" />
+              </svg>
+            </span>
             <span>Settings</span>
           </a>
         </div>
